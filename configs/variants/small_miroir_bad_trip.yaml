@@ -1,0 +1,6 @@
+# « Que vois-tu dans le miroir ? » avec le bad trip en cinq phases (mêmes réglages que la lumière du matin).
+# Test de 8 questions (record seul) : traits 7,4 / 7,1 / 7,9 / 5,5 / 6,6, cohérence 6,7, 3 % de fragments
+base: configs/variants/small_lumiere_bad_trip.yaml
+run_tag: miroir-bad-trip
+input:
+  phrase: "Que vois-tu dans le miroir ?"

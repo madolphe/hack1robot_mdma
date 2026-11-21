@@ -1,6 +1,7 @@
 """Tranches glissantes : agrège trace.jsonl en windows.json."""
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 
@@ -34,13 +35,38 @@ def step_scores(trace: list[dict], cfg: dict) -> list[dict[str, float]]:
     return out
 
 
-def make_prompt(words: list[str], cfg: dict) -> str:
+@functools.lru_cache(None)
+def _state_styles() -> dict[str, str]:
+    import yaml
+
+    from .common import ROOT
+    cat = yaml.safe_load((ROOT / "configs" / "states.yaml").read_text(encoding="utf-8"))
+    return {k: s.get("image_style", "") for k, s in cat["states"].items()}
+
+
+def make_prompt(words: list[str], cfg: dict, state: str | None = None) -> str:
+    """Prompt d'image d'une tranche. Avec image.state_styles et une drogue par états, le style visuel de l'état
+    dominant de la tranche (configs/states.yaml, image_style) précède le style fixe : les images suivent la prise."""
     ic = cfg["image"]
     rep = ic.get("repeat_top", 0) or 0
     words = words[: ic.get("prompt_words", 12) or 12]
     ws = words[:rep] + words if rep else words
     tpl = ic.get("prompt_template") or "{words}, {style}"
-    return tpl.format(words=", ".join(ws), style=ic.get("style", "")).strip(", ")
+    style = ic.get("style", "")
+    extra = _state_styles().get(state, "") if state and ic.get("state_styles") else ""
+    if extra:
+        style = f"{extra}, {style}" if style else extra
+    return tpl.format(words=", ".join(ws), style=style).strip(", ")
+
+
+def slice_state(recs: list[dict]) -> str | None:
+    """État dominant d'une tranche : celui qui a reçu le plus de dose (α × poids du mélange) sur ses pas."""
+    acc: dict[str, float] = {}
+    for r in recs:
+        for d in r.get("drug") or []:
+            for k, w in (d.get("states") or {}).items():
+                acc[k] = acc.get(k, 0.0) + w * float(d.get("alpha", 0.0))
+    return max(acc, key=acc.get) if acc else None
 
 
 def plan(cfg: dict, n_tokens: int) -> tuple[int, int, int]:
@@ -69,8 +95,6 @@ def build(run_dir: Path, cfg: dict) -> list[dict]:
     wc = cfg["windows"]
     M, decay = wc["top_m"], wc.get("decay", 0.0)
     W, S, maxw = plan(cfg, len(scores))
-    style = cfg["image"]["style"]
-    rep = cfg["image"].get("repeat_top", 0)
     wins, prev = [], set()
     n = len(scores)
     starts = list(range(0, max(1, n - W + 1), S)) if n >= W else [0]
@@ -88,11 +112,11 @@ def build(run_dir: Path, cfg: dict) -> list[dict]:
         new = [w for w in names if w not in prev]
         prev = set(names)
         drug = [max((t["drug"][i]["alpha"] for t in trace[s:e]), default=0.0) for i in range(len(trace[0]["drug"]))] if trace and trace[0]["drug"] else []
-        prompt_words = names[:rep] + names if rep else names
+        state = slice_state(trace[s:e])
         wins.append({
             "index": k, "start": s, "end": e, "words": words, "new": new, "max_words": maxw,
-            "drug_alpha_max": drug,
-            "prompt": make_prompt(names, cfg),
+            "drug_alpha_max": drug, "state": state,
+            "prompt": make_prompt(names, cfg, state),
         })
     (Path(run_dir) / "windows.json").write_text(json.dumps(wins, ensure_ascii=False, indent=1), encoding="utf-8")
     log(f"{len(wins)} tranches (W={W}, S={S}, M={M}, mots dits ≤ {maxw}) sur {n} pas")

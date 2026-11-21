@@ -50,6 +50,34 @@ tiennent toujours ~4 s, comme les quatre premiers prompts (*citrus, lemon, tongu
 ~10 s : c'est la structure de l'image, que la reprojection garde d'une image à l'autre, plus que la force. En revanche, les
 motifs des prompts reviennent plus souvent : le violon dès ~14 s, les lèvres vers 20 s et à la fin.
 
+## Balayage de la force (cadence 3, 1.6B, couleur 0,2)
+
+| strength | Changement / s | Saut à chaque diffusion | Couleur | Rendu |
+|---|---|---|---|---|
+| 0,10 | 226 | 4,1× | 19,3 | presque une photo neuve à chaque diffusion, fidèle aux prompts (lèvres, lavande, violon, rose sur les vagues, cœur au néon), mais l'image « pulse » 5 fois par seconde |
+| 0,20 | 180 | 2,6× | 20,7 | entre les deux : objets photographiques, plus de continuité, le fond kaki commence |
+| 0,25 | 183 | 2,2× | 23,5 | graphique, aplats kaki, motifs dessinés |
+| 0,27 | 171 | 2,1× | 24,4 | idem |
+| 0,30 | 159 | 2,0× | 24,7 | idem (défaut) |
+
+Saut : mouvement de l'image à une image diffusée, divisé par celui d'une image où seule la caméra bouge. Au-dessus de
+~0,25, la boucle perd la richesse photographique des prompts et tombe dans le style plat ; en dessous de ~0,2, elle
+garde le style des prompts mais perd la continuité. Vidéos : `runs/photo-lumiere/out_deforum_k10.mp4` … `k27.mp4`,
+grille synchronisée `runs/photo-lumiere/keep_compare/keep_grid.mp4`.
+
+## Drogue en plusieurs phases : couleurs par tranche
+
+Sur `runs/lumiere-bad-trip` (montée → pic sensoriel → bad trip → descente → rémanence, force 0,22), la correction de
+couleur ramenait chaque diffusion vers l'image 0 (miel, lèvres) : toute la vidéo restait beige et dorée, bad trip compris
+(`out_deforum_colorfirst.mp4`). `--color-ref slice` (défaut) prend comme référence la palette de l'image fixe de la
+tranche en cours, celle de la passe `render`, qui suit déjà l'état, avec le même fondu que les prompts : violet au pic,
+bleu-vert sombre au bad trip, gris à la descente, doré à la fin (`out_deforum.mp4`, même temps de rendu, 194 s).
+
+Ce qui reste : la caméra avance vite (`translation_z` jusqu'à 6,75 vers 6 s, puis 2,97 par image après 10 s) et
+la reprojection étire le bord de l'image en rayures qui convergent vers le point de fuite ; à 0,22, la diffusion les garde
+et elles occupent une bonne part du pic sensoriel et du bad trip. Elles existaient déjà dans `photo-lumiere`, moins
+présentes. `--z-scale` plus bas les réduirait (non essayé).
+
 ## Temps : pourquoi 7 min pour 40 s
 
 Une vidéo du pipeline fait 28 images (une par tranche, ~40 s de rendu) ; la boucle en fait 608 (15 i/s) avec 303

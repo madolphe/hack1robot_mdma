@@ -1,0 +1,14 @@
+# « Quel goût a la lumière du matin ? », drogue par états Montée -> Pic sensoriel -> Bad trip -> Descente -> Rémanence,
+# images en photo de cinéma dont le style suit l'état de chaque tranche (image.state_styles)
+base: configs/variants/img_photo.yaml
+run_tag: lumiere-bad-trip
+input:
+  phrase: "Quel goût a la lumière du matin ?"
+  system: "Tu réponds à la première personne, au présent, en décrivant ce que tu perçois : couleurs, sons, textures, mouvements."
+drug: {name: lsd_bad_trip, intensity: 1.0}
+generation:
+  # sans pénalité, le bad trip (« pensées qui tournent en boucle ») fait boucler le texte jusqu'à la fin :
+  # « Elle est tout mon crâne ! » ×20, descente et rémanence à 1-2/9 ; à 1,15, les cinq phases passent
+  repetition_penalty: 1.15
+image:
+  state_styles: true

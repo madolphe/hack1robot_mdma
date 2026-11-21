@@ -9,7 +9,7 @@ input:
     - "Une machine peut-elle rêver ?"
   phrase_index: 0
   system: "Tu dissertes longuement et librement sur le sujet donné."
-generation: {max_new_tokens: 600, temperature: 0.8, top_p: 0.95, seed: 1}
+generation: {max_new_tokens: 600, temperature: 0.8, top_p: 0.95, seed: 1, repetition_penalty: 1.0}  # >1 : pénalise les tokens déjà écrits
 readout:
   band: [0.38, 0.92]
   top_k: 50
@@ -38,6 +38,7 @@ image:
   intermediates: 0
   repeat_top: 0
   retry_letterbox: 3          # image à bandes noires en haut et en bas : jusqu'à 3 nouvelles graines
+  state_styles: false         # drogue par états : ajouter au prompt le style visuel de l'état de la tranche (states.yaml)
   seed: 1
   style: "Diffuse light, soft haze, rich colors, painterly brushstrokes, cinematic composition"
 voice: {engine: kokoro, n_voices: 1, voice: ff_siwis, voice_en: af_heart, english_voice: false, speed: 0.9, mode: new_words, polyphony: false, gap_s: 0.25}

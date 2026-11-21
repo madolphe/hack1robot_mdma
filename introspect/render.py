@@ -62,13 +62,17 @@ def load_pipes(cfg):
     return run_t2i, run_i2i
 
 
-def letterboxed(img, band: float = 0.04, dark: float = 8.0) -> bool:
-    """Bandes noires en haut et en bas (SANA-Sprint en produit pour certaines graines, quel que soit le prompt)."""
+def letterboxed(img, min_rows: float = 0.008, dark: float = 40.0, flat: float = 3.0) -> bool:
+    """Bandes de cinéma (SANA-Sprint en produit pour certaines graines, quel que soit le prompt), souvent fines (1 à 4 %
+    de la hauteur) : au moins `min_rows` de la hauteur en lignes sombres et unies sur toute la largeur, depuis le haut
+    ou depuis le bas. Le critère « unies » laisse passer les scènes sombres (bad trip), qui varient ; une fausse alerte
+    ne coûte qu'un nouveau tirage."""
     import numpy as np
 
     a = np.asarray(img.convert("L"), dtype=np.float32)
-    h = max(1, int(band * a.shape[0]))
-    return float(a[:h].mean()) < dark and float(a[-h:].mean()) < dark
+    bar = (a.mean(1) < dark) & (a.std(1) < flat)  # ligne entière sombre et unie
+    need = max(2, int(min_rows * a.shape[0]))
+    return bool(bar[:need].all() or bar[-need:].all())
 
 
 def interp_prompt(a: dict, b: dict, frac: float, style: str) -> str:
@@ -87,7 +91,7 @@ def render(run_dir: Path, cfg: dict | None = None, only_t2i: bool = False, limit
     ic = cfg["image"]
     wins = json.loads((run_dir / "windows.json").read_text(encoding="utf-8"))
     for w in wins:
-        w["prompt"] = make_prompt([x for x, _ in w["words"]], cfg)
+        w["prompt"] = make_prompt([x for x, _ in w["words"]], cfg, w.get("state"))
     if limit:
         wins = wins[:limit]
     frames = run_dir / frames_dir
@@ -104,7 +108,7 @@ def render(run_dir: Path, cfg: dict | None = None, only_t2i: bool = False, limit
         if prev is not None and n_mid:
             for m in range(1, n_mid + 1):
                 frac = m / (n_mid + 1)
-                p = make_prompt(interp_prompt(wins[k - 1], w, frac, ic["style"]), cfg)
+                p = make_prompt(interp_prompt(wins[k - 1], w, frac, ic["style"]), cfg, w.get("state"))
                 img = i2i(p, prev, min(0.35, ic["strength"]), gen)
                 name = f"{k:04d}_{m:02d}.png"
                 img.save(frames / name)

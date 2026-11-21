@@ -157,6 +157,16 @@ drugs:
       - {name: Pic sensoriel, start: 0.00, end: 0.40, state: synesthesia, dose: 0.75}
       - {name: Dissolution, start: 0.40, end: 0.75, state: dissolution, dose: 0.75}
       - {name: Rémanence, start: 0.75, end: 1.00, state: afterglow, dose: 0.75}
+  lsd_bad_trip:
+    # Le voyage complet du notebook mdma, avec la branche sombre : Montée -> Pic sensoriel -> Bad trip -> Descente ->
+    # Rémanence, un état par phase (configs/states.yaml), même convention de dose que lsd_etats
+    label: LSD (bad trip)
+    phases:
+      - {name: Montée, start: 0.00, end: 0.15, state: comeup, dose: 0.75}
+      - {name: Pic sensoriel, start: 0.15, end: 0.40, state: synesthesia, dose: 0.75}
+      - {name: Bad trip, start: 0.40, end: 0.65, state: badtrip, dose: 0.75}
+      - {name: Descente, start: 0.65, end: 0.85, state: comedown, dose: 0.75}
+      - {name: Rémanence, start: 0.85, end: 1.00, state: afterglow, dose: 0.75}
   champignons:
     label: Champignons
     phases:

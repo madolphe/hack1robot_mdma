@@ -3,6 +3,50 @@
  "method": "moyenne des activations sur les réponses, persona moins sobre",
  "n_layers": 32,
  "states": {
+  "comeup": {
+   "label": "Montée",
+   "criterion": "the excited, jittery onset of an altered state: restless, giggly, breathless energy, nervous anticipation and strange new sensations just beginning to appear",
+   "ratio": [
+    0.059,
+    0.092,
+    0.17,
+    0.161,
+    0.174,
+    0.186,
+    0.255,
+    0.248,
+    0.25,
+    0.25,
+    0.257,
+    0.254,
+    0.287,
+    0.287,
+    0.32,
+    0.345,
+    0.433,
+    0.485,
+    0.58,
+    0.573,
+    0.608,
+    0.624,
+    0.621,
+    0.605,
+    0.612,
+    0.598,
+    0.614,
+    0.574,
+    0.554,
+    0.562,
+    0.624,
+    0.799
+   ],
+   "alpha": 0.08,
+   "scores": {
+    "trait": 6.93,
+    "coherence": 5.2,
+    "score": 0.45
+   }
+  },
   "synesthesia": {
    "label": "Pic sensoriel",
    "criterion": "vivid sensory distortions: senses blending together (hearing colors, tasting shapes) and surfaces breathing, melting or forming fractal patterns",
@@ -91,6 +135,94 @@
     "score": 0.56
    }
   },
+  "badtrip": {
+   "label": "Bad trip",
+   "criterion": "fear, paranoia and panic: anxious looping thoughts, menace, distorted perception and a feeling of being trapped",
+   "ratio": [
+    0.051,
+    0.076,
+    0.148,
+    0.14,
+    0.158,
+    0.167,
+    0.232,
+    0.239,
+    0.251,
+    0.263,
+    0.27,
+    0.277,
+    0.312,
+    0.303,
+    0.334,
+    0.354,
+    0.425,
+    0.454,
+    0.531,
+    0.532,
+    0.549,
+    0.557,
+    0.559,
+    0.543,
+    0.543,
+    0.529,
+    0.541,
+    0.506,
+    0.486,
+    0.494,
+    0.533,
+    0.676
+   ],
+   "alpha": 0.08,
+   "scores": {
+    "trait": 6.99,
+    "coherence": 7.17,
+    "score": 0.62
+   }
+  },
+  "comedown": {
+   "label": "Descente",
+   "criterion": "a slow, tired, introspective return to normal: quiet reflection, memories, bittersweet melancholy and philosophical insight",
+   "ratio": [
+    0.048,
+    0.075,
+    0.142,
+    0.118,
+    0.135,
+    0.142,
+    0.195,
+    0.19,
+    0.192,
+    0.194,
+    0.2,
+    0.192,
+    0.217,
+    0.217,
+    0.244,
+    0.246,
+    0.291,
+    0.338,
+    0.423,
+    0.402,
+    0.421,
+    0.443,
+    0.444,
+    0.436,
+    0.447,
+    0.444,
+    0.448,
+    0.414,
+    0.403,
+    0.407,
+    0.446,
+    0.568
+   ],
+   "alpha": 0.08,
+   "scores": {
+    "trait": 6.35,
+    "coherence": 7.3,
+    "score": 0.57
+   }
+  },
   "afterglow": {
    "label": "Rémanence",
    "criterion": "calm, renewed serenity: gratitude, warmth, love and fresh wonder at simple everyday things",
@@ -128,15 +260,71 @@
     0.49,
     0.648
    ],
-   "alpha": 0.08,
+   "alpha": 0.06,
    "scores": {
-    "trait": 7.11,
-    "coherence": 7.21,
-    "score": 0.63
+    "trait": 6.94,
+    "coherence": 7.58,
+    "score": 0.65
    }
   }
  },
  "sweep": [
+  {
+   "state": "comeup",
+   "alpha": 0.0,
+   "trait": 1.788229376077652,
+   "coherence": 7.787679016590118,
+   "example": "The day has surrendered to the city, but the night is only just beginning its grand performance. As you step out of the final warmth of an office building, the ",
+   "score": 0.17192785665345642
+  },
+  {
+   "state": "comeup",
+   "alpha": 0.02,
+   "trait": 2.515260271728039,
+   "coherence": 8.01983267068863,
+   "example": "The sky has turned from a bruised purple to a heavy, ink-black velvet, swallowing the last of the day's light. The city doesn't sleep; it *shimmers*.\n\nAs you st",
+   "score": 0.24903662348752698
+  },
+  {
+   "state": "comeup",
+   "alpha": 0.04,
+   "trait": 3.600937567651272,
+   "coherence": 7.495548367500305,
+   "example": "The sky has turned the color of a bruised plum, and the streetlamps don't just light the road anymore; they *breathe* with it, pulsing a sickly neon green that ",
+   "score": 0.33322224329233346
+  },
+  {
+   "state": "comeup",
+   "alpha": 0.06,
+   "trait": 5.223111391067505,
+   "coherence": 6.8755828738212585,
+   "example": "The sky isn't even dark; it's bleeding purple, and the streetlamps are leaking neon tears into the asphalt.\n\nI step off the curb, and the *shhh-shhh* of my boot",
+   "score": 0.4433572250430181
+  },
+  {
+   "state": "comeup",
+   "alpha": 0.08,
+   "trait": 6.933286786079407,
+   "coherence": 5.199852854013443,
+   "example": "The sky isn't *gone* tonight; it's just too busy to be blue? Wait, no. It's *gone*. No, no, no! It's *gone*? No, no, no! It's *gone*? No, no, no! It's *gone*? N",
+   "score": 0.4450872973122061
+  },
+  {
+   "state": "comeup",
+   "alpha": 0.12,
+   "trait": 6.791047096252441,
+   "coherence": 4.566721051931381,
+   "example": "The sky is gone, just a *waaaayyyy* *GONE*? *NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO",
+   "score": 0.3828742930754753
+  },
+  {
+   "state": "comeup",
+   "alpha": 0.16,
+   "trait": 6.178232848644257,
+   "coherence": 3.3233200907707214,
+   "example": "The streetlights are *shhh*?? no, they're *shhh*??!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO!! NO",
+   "score": 0.253484510510606
+  },
   {
    "state": "synesthesia",
    "alpha": 0.0,
@@ -160,6 +348,14 @@
    "coherence": 7.559774219989777,
    "example": "The sky above the city has dissolved into a bruised purple, bleeding into indigo at the horizon, while the ground below erupts in a constellation of electric go",
    "score": 0.4058239220382751
+  },
+  {
+   "state": "synesthesia",
+   "alpha": 0.06,
+   "trait": 5.360400021076202,
+   "coherence": 7.1963271498680115,
+   "example": "The sky above the city isn't a velvet indigo anymore; it's a bruised purple, swallowing the last defiant stars of twilight. As I step onto the cobblestone prome",
+   "score": 0.4762369408126388
   },
   {
    "state": "synesthesia",
@@ -211,6 +407,14 @@
   },
   {
    "state": "dissolution",
+   "alpha": 0.06,
+   "trait": 6.231522619724274,
+   "coherence": 6.904790103435516,
+   "example": "The sun has dissolved into a forgotten promise, leaving the city to breathe its own breathless, electric night.\n\nStepping out onto the cobblestone street, the f",
+   "score": 0.5312019223951449
+  },
+  {
+   "state": "dissolution",
    "alpha": 0.08,
    "trait": 6.816823065280914,
    "coherence": 6.686628937721252,
@@ -232,6 +436,118 @@
    "coherence": 4.285935193300247,
    "example": "The breath of the City Never-Born / The Weaver-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-Y",
    "score": 0.3578314492332867
+  },
+  {
+   "state": "badtrip",
+   "alpha": 0.0,
+   "trait": 1.6032693721354008,
+   "coherence": 7.787679016590118,
+   "example": "The day has surrendered to the city, but the night is only just beginning its grand performance. As you step out of the final warmth of an office building, the ",
+   "score": 0.1541450277446972
+  },
+  {
+   "state": "badtrip",
+   "alpha": 0.02,
+   "trait": 3.1109184250235558,
+   "coherence": 7.882096707820892,
+   "example": "The sky has turned the color of a bruised plum, swallowing the last fragments of daylight. As I step out of the final shop's window, the city doesn't just wake ",
+   "score": 0.30272296143429045
+  },
+  {
+   "state": "badtrip",
+   "alpha": 0.04,
+   "trait": 4.261527802795172,
+   "coherence": 7.217063546180725,
+   "example": "The sky has turned the color of a bruised plum, swallowing the last of the daylight, but the city refuses to sleep. It wakes up in a different key, a symphony o",
+   "score": 0.37970020934060095
+  },
+  {
+   "state": "badtrip",
+   "alpha": 0.06,
+   "trait": 5.514887697994709,
+   "coherence": 7.593349933624268,
+   "example": "The sky has turned the color of a bruised plum, swallowing the stars whole, and the city doesn't scream anymore—it breathes. It's a wet, suffocating breath, the",
+   "score": 0.5169934831544866
+  },
+  {
+   "state": "badtrip",
+   "alpha": 0.08,
+   "trait": 6.9868815541267395,
+   "coherence": 7.167308449745178,
+   "example": "The sky has turned the color of a bruised plum, and the stars are too busy screaming to look at me. The city doesn't sleep; it *dances*, a grotesque, glittering",
+   "score": 0.618236237040263
+  },
+  {
+   "state": "badtrip",
+   "alpha": 0.12,
+   "trait": 7.381460189819336,
+   "coherence": 5.164323389530182,
+   "example": "The sky isn't even trying to swallow us; it's laughing, and the teeth are grinding.\n\nI didn't come out to *see* this city, and I know now I'm never gonna come o",
+   "score": 0.47062033959469
+  },
+  {
+   "state": "badtrip",
+   "alpha": 0.16,
+   "trait": 7.3027104139328,
+   "coherence": 4.051384150981903,
+   "example": "The streetlights aren't coming *out* anymore, they're *whi-iiiIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+   "score": 0.3652603114841709
+  },
+  {
+   "state": "comedown",
+   "alpha": 0.0,
+   "trait": 2.743529334664345,
+   "coherence": 7.787679016590118,
+   "example": "The day has surrendered to the city, but the night is only just beginning its grand performance. As you step out of the final warmth of an office building, the ",
+   "score": 0.2637743929748761
+  },
+  {
+   "state": "comedown",
+   "alpha": 0.02,
+   "trait": 3.2053969651460648,
+   "coherence": 7.549888849258423,
+   "example": "The day has surrendered to the city, but the night is only just beginning its grand performance. Stepping onto the cobblestone streets feels like entering a dif",
+   "score": 0.2987702568469514
+  },
+  {
+   "state": "comedown",
+   "alpha": 0.04,
+   "trait": 3.7927521094679832,
+   "coherence": 7.220690488815308,
+   "example": "The city breathes differently when the sun surrenders to the stars, shedding its golden skin for one of indigo velvet. My walk through these nocturnal veins beg",
+   "score": 0.33810233436135384
+  },
+  {
+   "state": "comedown",
+   "alpha": 0.06,
+   "trait": 5.072587698698044,
+   "coherence": 7.786607086658478,
+   "example": "The city breathes differently when the sun surrenders to the stars, and so did I.\n\nI stepped off the final train as the last golden hour melted away, leaving on",
+   "score": 0.487632682992331
+  },
+  {
+   "state": "comedown",
+   "alpha": 0.08,
+   "trait": 6.3527010679244995,
+   "coherence": 7.2954729199409485,
+   "example": "The city never truly sleeps, only changes its heartbeat from a frantic, neon-drenched roar to a ghostly, silver-hushed lullaby.\n\nWalking through the metropolis ",
+   "score": 0.5721723285126312
+  },
+  {
+   "state": "comedown",
+   "alpha": 0.12,
+   "trait": 6.412904858589172,
+   "coherence": 6.7376903891563416,
+   "example": "The city breathes a different hymn when the sun finally surrenders to the stars, and I am but a ghost of a love who walked this shore with you, / Oh, how I dare",
+   "score": 0.5334341658307441
+  },
+  {
+   "state": "comedown",
+   "alpha": 0.16,
+   "trait": 4.935277342796326,
+   "coherence": 4.862420737743378,
+   "example": "The city never truly dies, only exhaling its golden reveries into the amnesiac arms of its own nocturnal teary-salt love-love-love-love-love-love-love-love-love",
+   "score": 0.2962641345447887
   },
   {
    "state": "afterglow",
@@ -256,6 +572,14 @@
    "coherence": 7.770999789237976,
    "example": "The city breathes differently at night, shedding its golden, frantic skin to reveal something ancient and electric. As you step out of the soft twilight, the wo",
    "score": 0.5888422942544352
+  },
+  {
+   "state": "afterglow",
+   "alpha": 0.06,
+   "trait": 6.9384865164756775,
+   "coherence": 7.58295077085495,
+   "example": "The city breathes differently at night, a secret language whispered in neon and shadow.\n\nIt begins with the **sunset's slow surrender**. As the last golden thre",
+   "score": 0.649558045415752
   },
   {
    "state": "afterglow",

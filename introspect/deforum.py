@@ -7,7 +7,7 @@ la tranche commence (fondu des embeddings sur --prompt-blend images), et le son 
 rotation_3d_*, fov du réglage Deforum) et reprojection de l'image précédente ; toutes les `cadence` images,
 contraste, bruit, img2img SANA-Sprint (force = part gardée) et couleurs ramenées sur l'image 0.
 
-./run.sh py deforum --run runs/<id> [--cadence 3] [--fps 15] [--strength 0.30] [--no-binning] [--small]
+./run.sh py deforum --run runs/<id> [--cadence 3] [--fps 15] [--strength 0.22] [--no-binning] [--small]
 -> runs/<id>/out_deforum.mp4 (1920x1080, son du montage), deforum/NNNNN.png, deforum.json (réglages et temps)"""
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from PIL import Image
 
 from .assemble import durations, ffmpeg_bin
 from .common import ROOT, Log, run_config
+from .render import letterboxed
 from .windows import make_prompt
 
 sys.path.insert(0, str(ROOT / "sana_deforum"))
@@ -131,10 +132,13 @@ def main(argv=None):
     ap.add_argument("--H", type=int, default=576)
     ap.add_argument("--cadence", type=int, default=3,
                     help="diffusion toutes les N images (2 dans le réglage de référence ; 3 : 32 %% plus rapide, mêmes sauts à chaque diffusion, 5 par seconde au lieu de 7,5)")
-    ap.add_argument("--strength", type=float, default=0.30,
+    ap.add_argument("--strength", type=float, default=0.22,
                     help="part de l'image gardée à chaque diffusion (0.675 dans le réglage de référence : les prompts n'y passent pas)")
     ap.add_argument("--z-scale", type=float, default=1.0, help="vitesse d'avance (1 = translation_z / 200, comme Deforum)")
-    ap.add_argument("--color", type=float, default=0.2, help="dosage du retour aux couleurs de l'image 0 (0 = libre)")
+    ap.add_argument("--color", type=float, default=0.2, help="dosage du retour aux couleurs de référence (0 = libre)")
+    ap.add_argument("--color-ref", choices=["slice", "first"], default="slice",
+                    help="couleurs de référence : slice = l'image fixe de la tranche en cours (frames/, passe render), "
+                         "fondue comme les prompts ; first = l'image 0 (réglage d'origine : toute la vidéo garde sa palette)")
     ap.add_argument("--prompt-blend", type=int, default=12, help="images de fondu entre les prompts de deux tranches (à 15 i/s)")
     ap.add_argument("--small", action="store_true", help="transformer 0.6B au lieu de 1.6B (un peu plus rapide, moins net)")
     ap.add_argument("--motion-fps", type=float, default=15.0,
@@ -167,8 +171,8 @@ def main(argv=None):
     N = int(round(total * a.fps))
     starts = np.cumsum([0.0] + durs)[:-1]
     # une image clé de prompt par tranche, à l'image vidéo où la tranche commence
-    pk = sorted({int(round(s * a.fps)): make_prompt([x for x, _ in w["words"]], cfg) for s, w in zip(starts, wins)
-                 if round(s * a.fps) < N}.items())
+    keys = sorted({int(round(s * a.fps)): k for k, s in enumerate(starts) if round(s * a.fps) < N}.items())
+    pk = [(f0, make_prompt([x for x, _ in wins[k]["words"]], cfg, wins[k].get("state"))) for f0, k in keys]
 
     settings = DEFAULT_SETTINGS | json.loads(Path(a.settings).read_text())
     # les courbes sont écrites image par image pour --motion-fps : on les lit au même instant, et les déplacements
@@ -188,7 +192,7 @@ def main(argv=None):
     cadence = max(1, int(a.cadence or float(settings.get("diffusion_cadence", 1))))  # 0 : celle du réglage
     W, H = a.W // 32 * 32, a.H // 32 * 32
     params = {"frames": N, "fps": a.fps, "W": W, "H": H, "cadence": cadence, "strength": round(float(keeps.mean()), 3),
-              "z_scale": a.z_scale, "color": a.color, "model": "0.6B" if a.small else "1.6B", "prompts": len(pk),
+              "z_scale": a.z_scale, "color": a.color, "color_ref": a.color_ref, "model": "0.6B" if a.small else "1.6B", "prompts": len(pk),
               "strength_mode": a.strength_mode, "depth_every": a.depth_every, "binning": not a.no_binning,
               "settings": Path(a.settings).name}
     log("réglages", json.dumps(params, ensure_ascii=False))
@@ -207,18 +211,38 @@ def main(argv=None):
 
     blend = max(0, round(a.prompt_blend / ratio))  # même durée de fondu en secondes à toute cadence
 
-    def prompt_at(f):
+    def key_at(f):
+        """Image clé en cours, la suivante pendant le fondu (sinon None) et le poids de la suivante."""
         i = max(k for k in range(len(pk)) if pk[k][0] <= f)
         if blend > 0 and i + 1 < len(pk) and f > pk[i + 1][0] - blend:
-            return pk[i][1], pk[i + 1][1], 1 - (pk[i + 1][0] - f) / blend
-        return pk[i][1], None, 0.0
+            return i, i + 1, 1 - (pk[i + 1][0] - f) / blend
+        return i, None, 0.0
+
+    # palette de chaque tranche : celle de son image fixe, qui suit déjà l'état (image.state_styles) ; avec l'image 0
+    # comme seule référence, une drogue en plusieurs phases garde toute la vidéo la palette de la montée
+    refs = None
+    stills = [run_dir / "frames" / f"{k:04d}.png" for _, k in keys]
+    if a.color_ref == "slice" and all(p.exists() for p in stills):
+        refs = []
+        for p in stills:
+            lab = to_lab_t(torch.from_numpy(np.asarray(Image.open(p).convert("RGB").resize((W // 4, H // 4)),
+                                                       dtype=np.float32) / 255).to(dev))
+            refs.append((lab.mean((0, 1)), lab.std((0, 1))))
+    elif a.color_ref == "slice":
+        log("pas d'images fixes dans frames/ (passe render) : couleurs de l'image 0")
 
     out = run_dir / f"deforum{sfx}"
     out.mkdir(exist_ok=True)
     for old in out.glob("*.png"):
         old.unlink()
-    gen = torch.Generator("cpu").manual_seed(int(cfg["image"].get("seed", 1)))
-    img = sana.text2img(sana.embeds(pk[0][1]), W, H, gen).float().clamp(0, 1)
+    seed = int(cfg["image"].get("seed", 1))
+    for attempt in range(1 + int(cfg["image"].get("retry_letterbox", 3))):
+        gen = torch.Generator("cpu").manual_seed(seed + 1000 * attempt)
+        img = sana.text2img(sana.embeds(pk[0][1]), W, H, gen).float().clamp(0, 1)
+        # toute la plongée part de cette image : des bandes noires y resteraient jusqu'au bout
+        if not letterboxed(Image.fromarray((img[0].permute(1, 2, 0).float() * 255).round().byte().cpu().numpy())):
+            break
+        log(f"première image : bandes noires, nouvel essai ({attempt + 1})")
     lab0 = to_lab_t(img[0].permute(1, 2, 0).float())
     ref_lab = (lab0.mean((0, 1)), lab0.std((0, 1)))
     from concurrent.futures import ThreadPoolExecutor
@@ -247,7 +271,8 @@ def main(argv=None):
             x = ((img - 0.5) * contrasts[f] + 0.5).clamp(0, 1)
             if noises[f] > 0:
                 x = (x + torch.randn(x.shape, generator=gen).to(dev) * noises[f]).clamp(0, 1)
-            pa, pb, w = prompt_at(f)
+            i, j, w = key_at(f)
+            pa, pb = pk[i][1], pk[j][1] if j is not None else None
             if a.strength_mode == "angle":
                 x = direct(x.to(dtype), sana.mixed(pa, pb, w), float(keeps[f]), gen)
             else:
@@ -257,7 +282,9 @@ def main(argv=None):
             fresh = True  # image renouvelée : nouvelle carte de profondeur à l'image suivante
             sync(dev); T["diffuse"] += time.time() - t1
             t1 = time.time()
-            img = match_lab_t(img, ref_lab, a.color) if a.color > 0 else img
+            ref = ref_lab if refs is None else refs[i] if j is None else tuple(
+                (1 - w) * x + w * y for x, y in zip(refs[i], refs[j]))
+            img = match_lab_t(img, ref, a.color) if a.color > 0 else img
             T["color"] += time.time() - t1
         save(f, img)
         if f % max(1, N // 10) == 0:

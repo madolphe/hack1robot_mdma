@@ -4,8 +4,8 @@ Méthode du projet mdma : vecteur d'un état à la couche l = moyenne des activa
 écrites dans cet état (prompt « persona », configs/states.yaml), moins la même moyenne en état sobre ; normalisé.
 La drogue l'injecte comme les mots : h += α ‖h‖ u_l aux couches de la bande droguée, au token généré.
 
-./run.sh py states extract --config configs/small.yaml [--states synesthesia dissolution afterglow]
-./run.sh py states sweep   --config configs/small.yaml [--alphas 0.02 0.04 0.08 0.12 0.16]
+./run.sh py states extract --config configs/small.yaml [--states comeup synesthesia …]  (défaut : tous)
+./run.sh py states sweep   --config configs/small.yaml [--alphas 0.02 0.04 0.06 0.08 0.12 0.16]
 -> vectors/<modèle>/trip_states.pt (unit [n_couches, d] par état, dose α recommandée, scores du juge)
    et trip_states.json (métadonnées lisibles), réponses et balayage dans runs/setup/."""
 from __future__ import annotations
@@ -200,12 +200,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["extract", "sweep"])
     ap.add_argument("--config", required=True)
-    ap.add_argument("--states", nargs="+", default=["synesthesia", "dissolution", "afterglow"])
-    ap.add_argument("--alphas", nargs="+", type=float, default=[0.02, 0.04, 0.08, 0.12, 0.16])
+    ap.add_argument("--states", nargs="+", default=None, help="états à extraire (défaut : tous ceux de configs/states.yaml)")
+    ap.add_argument("--alphas", nargs="+", type=float, default=[0.02, 0.04, 0.06, 0.08, 0.12, 0.16])
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     if a.cmd == "extract":
-        extract(cfg, a.states)
+        extract(cfg, a.states or list(catalog()["states"]))
     else:
         sweep(cfg, a.alphas)
 

@@ -199,6 +199,13 @@ def record(cfg: dict, run_dir: Path, model=None, tok=None, lens=None) -> Path:
             if block_eos:
                 logits = logits.clone()
                 logits[list(stop_ids)] = float("-inf")
+            rp = float(g.get("repetition_penalty", 1.0))
+            if rp != 1.0 and out_ids:  # pénalité de répétition (convention HF) sur les tokens déjà écrits
+                seen = torch.tensor(sorted(set(out_ids[-int(g.get("repetition_window", 0) or len(out_ids)):])),
+                                    device=logits.device)
+                logits = logits.clone()
+                v = logits[seen]
+                logits[seen] = torch.where(v > 0, v / rp, v * rp)
             nxt = sample(logits, g["temperature"], g["top_p"], gen)
             if nxt in stop_ids:
                 log(f"fin de génération (token d'arrêt) au pas {step}")
