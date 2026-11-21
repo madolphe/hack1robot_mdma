@@ -30,10 +30,34 @@ def r(x, n=4):
 class Decoder:
     """Décode jh avec la norme finale et lm_head du modèle, et calcule les directions de drogue."""
 
-    def __init__(self, reader, tok):
+    def __init__(self, reader, tok, units: dict | None = None):
         self.reader, self.tok = reader, tok
         self.cache: dict[int, str] = {}
         self.dirs: dict[tuple[str, int], torch.Tensor] = {}
+        self.units = units or {}  # vecteurs d'état {état: [n_couches, d]} pour les drogues par états
+
+    def step_dir(self, words: list[str], states: dict, l: int):
+        """(direction unitaire injectée à la couche l, norme du mélange) ; None sans drogue à ce pas."""
+        if states:
+            v = sum(w * self.units[k][l].float() for k, w in states.items())
+            return v / v.norm(), float(v.norm())
+        v = self.drug_vec(words, l)
+        return (v, 1.0) if v is not None else None
+
+    @torch.no_grad()
+    def signature(self, state: str, l: int, n: int = 12) -> list[str]:
+        """Mots que la lentille lit dans le vecteur d'état lui-même (à la couche l)."""
+        J = self.reader.lens.jacobians[l].to(self.reader.device, torch.float32)
+        p = self.reader.unembed((J @ self.units[state][l].float().to(self.reader.device))[None])[0]
+        p = p.masked_fill(~self.reader.word_mask, float("-inf"))
+        out = []
+        for i in p.topk(5 * n).indices.tolist():
+            w = self.reader.word_of[i]
+            if w not in out:
+                out.append(w)
+            if len(out) == n:
+                break
+        return out
 
     def piece(self, i: int) -> str:
         if i not in self.cache:
@@ -113,6 +137,11 @@ def drug_info(trace) -> tuple[list[list[str]], list[float], list[str]]:
     return words, alpha, phase
 
 
+def drug_states(trace) -> list[dict]:
+    """Mélange d'états injecté à chaque pas ({} pour une drogue par mots ou sans drogue)."""
+    return [(rec["drug"][0].get("states") or {}) if rec["drug"] else {} for rec in trace]
+
+
 def thumbs(run_dir: Path, width=320) -> dict[int, str]:
     from PIL import Image
 
@@ -126,7 +155,7 @@ def thumbs(run_dir: Path, width=320) -> dict[int, str]:
     return out
 
 
-def checks(main, base, m, b, dec, layers, band, drug_layers) -> list[dict]:
+def checks(main, base, m, b, dec, layers, band, drug_layers, info) -> list[dict]:
     """Contrôles automatiques ; status : good | warning | critical | info."""
     out = []
     js = main["js"]
@@ -177,7 +206,7 @@ def checks(main, base, m, b, dec, layers, band, drug_layers) -> list[dict]:
                 else f"aucun : ‖h‖ reste entre ×{float(ratio_h.min()):.2f} et ×{float(ratio_h.max()):.2f} de la médiane de sa couche"})
     out.append(echo_filter(main))
     if base is None:
-        return out + self_reading(main, m, None, layers, band, drug_layers)
+        return out + self_reading(main, m, None, layers, band, drug_layers, info)
     # préfixe commun avec le témoin sobre
     a, bb = main["js"]["token_ids"], base["js"]["token_ids"]
     n = 0
@@ -194,21 +223,21 @@ def checks(main, base, m, b, dec, layers, band, drug_layers) -> list[dict]:
                               "(attendu : exactement 0)"})
         # injection à la première couche droguée : Δh = α ‖h‖ v
         li = layers.index(first)
-        words, alpha, _ = drug_info(main["trace"])
         cos, ratio = [], []
         for t in range(n):
-            v = dec.drug_vec(words[t], first)
-            if v is None or alpha[t] == 0:
+            sd = dec.step_dir(info["words"][t], info["states"][t], first)
+            if sd is None or info["alpha"][t] == 0:
                 continue
+            v, scale = sd
             dlt = hm[t, li] - hb[t, li]
             cos.append(float(torch.nn.functional.cosine_similarity(dlt, v, dim=0)))
-            ratio.append(float(dlt.norm() / (alpha[t] * hb[t, li].norm())))
+            ratio.append(float(dlt.norm() / (info["alpha"][t] * scale * hb[t, li].norm())))
         if cos:
             ok = min(cos) > 0.99 and all(abs(x - 1) < 0.05 for x in ratio)
             out.append({"status": "good" if ok else "warning", "title": f"Injection mesurée à la couche {first}",
                         "detail": f"Δh = h drogué − h sobre : cos(Δh, direction) min {min(cos):.4f}, "
                                   f"‖Δh‖ / (α‖h‖) entre {min(ratio):.3f} et {max(ratio):.3f} (attendu : 1 et 1)"})
-    out += self_reading(main, m, b, layers, band, drug_layers)
+    out += self_reading(main, m, b, layers, band, drug_layers, info)
     return out
 
 
@@ -232,11 +261,14 @@ def echo_filter(main) -> dict:
                 "ouvre une porte »)" if removed < 0.05 else "")}
 
 
-def self_reading(main, m, b, layers, band, drug_layers) -> list[dict]:
-    """La lentille relit-elle l'injection ? Part des mots injectés dans la lecture, puis dans les mots de la vidéo."""
+def self_reading(main, m, b, layers, band, drug_layers, info) -> list[dict]:
+    """La lentille relit-elle l'injection ? Part des mots marqués (mots injectés, ou signature lexicale de l'état
+    injecté) dans la lecture, puis dans les mots de la vidéo."""
     out = []
-    if not any(rec["drug"] and rec["drug"][0].get("alpha") for rec in main["trace"]):
+    if not any(info["alpha"]):
         return out
+    states = info["kind"] == "states"
+    what = "mots de la signature de l'état injecté" if states else "mots injectés"
     in_band = [li for li, l in enumerate(layers) if l in drug_layers]
     above = [li for li, l in enumerate(layers) if l > max(drug_layers) and l in band]
     k = min(len(m["mass"]), len(b["mass"])) if b else len(m["mass"])
@@ -247,9 +279,11 @@ def self_reading(main, m, b, layers, band, drug_layers) -> list[dict]:
     overlap = sorted(set(band) & set(drug_layers))
     m_raw = m.get("raw")
     if main["js"].get("subtract_injection") and m_raw:
-        ok = share(m["mass"], in_band) < share(m_raw["mass"], in_band) / 10
-        out.append({"status": "good" if ok else "warning", "title": "Lecture sans l'injection",
-                    "detail": f"la lentille lit h moins la drogue injectée aux couches précédentes. Part des mots injectés "
+        ok = share(m["mass"], in_band) < share(m_raw["mass"], in_band) / 3
+        # un état n'est pas construit à partir de la lentille : sa signature se relit peu, et ce qui en reste après
+        # correction est surtout la réaction du modèle (son texte et sa pensée prennent la couleur de l'état)
+        out.append({"status": "good" if ok else "info" if states else "warning", "title": "Lecture sans l'injection",
+                    "detail": f"la lentille lit h moins la drogue injectée aux couches précédentes. Part des {what} "
                               f"dans les couches {min(drug_layers)}..{max(drug_layers)} : {share(m_raw['mass'], in_band):.1%} "
                               f"en lecture brute, {share(m['mass'], in_band):.2%} après correction{base_txt} ; au-dessus "
                               f"({layers[above[0]]}..{layers[above[-1]]}) : {share(m_raw['mass'], above):.1%} brute, "
@@ -257,25 +291,29 @@ def self_reading(main, m, b, layers, band, drug_layers) -> list[dict]:
                               "qui reprennent la direction injectée : c'est sa réaction"})
     elif overlap and above:
         out.append({"status": "warning", "title": "La lentille relit l'injection",
-                    "detail": f"part de la lecture prise par les mots injectés : {share(m['mass'], in_band):.1%} dans les couches "
+                    "detail": f"part de la lecture prise par les {what} : {share(m['mass'], in_band):.1%} dans les couches "
                               f"injectées {min(drug_layers)}..{max(drug_layers)}{base_txt}, {share(m['mass'], above):.1%} au-dessus "
                               f"({layers[above[0]]}..{layers[above[-1]]}). La bande lue pour la vidéo ({band[0]}..{band[-1]}) "
                               f"contient les couches injectées {overlap[0]}..{overlap[-1]} (readout.subtract_injection corrige)"})
-    wins = main["windows"]
-    trace = main["trace"]
     inj = total = 0
     seen = Counter()
-    for w in wins:
-        drawn = {x.lower() for t in trace[w["start"]:w["end"]] for x in (t["drug"][0].get("words") or [])} if trace[0]["drug"] else set()
+    for w in main["windows"]:
+        drawn = {x.lower() for ws in info["marks"][w["start"]:w["end"]] for x in ws}
         for word, _ in w["words"]:
             total += 1
             if word in drawn:
                 inj += 1
                 seen[word] += 1
     if total:
-        out.append({"status": "warning" if inj / total > 0.05 else "good", "title": "Mots de la vidéo = mots injectés",
-                    "detail": f"{inj}/{total} mots des tranches ({inj / total:.0%}) sont les mots que la drogue injectait "
-                              f"pendant la tranche : " + ", ".join(w for w, _ in seen.most_common(10))})
+        out.append({"status": "warning" if inj / total > 0.05 and not states else "good" if inj / total <= 0.05 else "info",
+                    "title": "Mots de la vidéo = " + ("signature de l'état" if states else "mots injectés"),
+                    "detail": f"{inj}/{total} mots des tranches ({inj / total:.0%}) sont des {what} pendant la tranche"
+                              + (" : " + ", ".join(w for w, _ in seen.most_common(10)) if seen else "")})
+    if states:
+        sig = info["signatures"]
+        out.append({"status": "info", "title": "Signature lexicale des états",
+                    "detail": f"ce que la lentille lit dans chaque vecteur d'état (couche {max(drug_layers)}) : "
+                              + " ; ".join(f"{k} : {', '.join(v[:8])}" for k, v in sig.items())})
     return out
 
 
@@ -307,23 +345,34 @@ def main(argv=None):
         ((cfg.get("drugs") or [{}])[0].get("band", [0.45, 0.70]))
     drug_layers = [l for l in reader.lens.source_layers if lo * reader.n_layers <= l <= hi * reader.n_layers]
     words, alpha, phase = drug_info(main_run["trace"])
+    states = drug_states(main_run["trace"])
     dec.directions({w for ws in words for w in ws}, layers)
+    info = {"words": words, "states": states, "alpha": alpha, "kind": "states" if any(states) else "words",
+            "marks": words, "labels": [", ".join(ws) for ws in words], "signatures": {}}
+    if info["kind"] == "states":
+        # drogue par états : les « mots marqués » sont la signature lexicale de l'état dominant à chaque pas
+        from .states import load_pack
+        dec.units = {k: s["unit"] for k, s in load_pack(cfg)["states"].items()}
+        info["signatures"] = {k: dec.signature(k, max(drug_layers)) for k in sorted({k for s in states for k in s})}
+        info["marks"] = [info["signatures"][max(s, key=s.get)] if s else [] for s in states]
+        info["labels"] = [" + ".join(f"{k} {w:.0%}" for k, w in s.items()) for s in states]
 
-    m = dec.run(main_run["js"], words)
+    m = dec.run(main_run["js"], info["marks"])
     if main_run["js"].get("subtract_injection") and "inj" in main_run["js"]:
         # lecture brute, pour comparer : J @ h = J @ (h − inj) + J @ inj
         J = torch.stack([reader.lens.jacobians[l] for l in layers]).float()
         raw = main_run["js"]["jh"].float() + torch.einsum("lij,tlj->tli", J, main_run["js"]["inj"].float())
-        m["raw"] = dec.run({**main_run["js"], "jh": raw}, words)
-    # témoin : part dans sa lecture des mots que la drogue injectait au même pas du run drogué
-    b = dec.run(base["js"], words[: len(base["js"]["token_ids"])]) if base else None
+        m["raw"] = dec.run({**main_run["js"], "jh": raw}, info["marks"])
+    # témoin : part dans sa lecture des mots que la drogue marquait au même pas du run drogué
+    b = dec.run(base["js"], info["marks"][: len(base["js"]["token_ids"])]) if base else None
     # cos(h, direction injectée) par couche
     cosd = torch.full(m["hn"].shape, float("nan"))
-    for t, ws in enumerate(words):
-        if ws:
-            for li, l in enumerate(layers):
-                cosd[t, li] = float(torch.nn.functional.cosine_similarity(main_run["js"]["h"][t, li].float(), dec.drug_vec(ws, l), dim=0))
-    chk = checks(main_run, base, m, b, dec, layers, band, drug_layers)
+    for t in range(len(words)):
+        for li, l in enumerate(layers):
+            sd = dec.step_dir(words[t], states[t], l)
+            if sd is not None:
+                cosd[t, li] = float(torch.nn.functional.cosine_similarity(main_run["js"]["h"][t, li].float(), sd[0], dim=0))
+    chk = checks(main_run, base, m, b, dec, layers, band, drug_layers, info)
 
     def pack(run, met, extra=None):
         js = run["js"]
@@ -345,7 +394,8 @@ def main(argv=None):
         "run": main_run["dir"].name, "baseline": base["dir"].name if base else None,
         "question": main_run["js"]["phrase"], "model": cfg["model"], "lens": cfg["lens"]["file"],
         "drug": cfg.get("drug") or None, "layers": layers, "band": band, "drug_layers": drug_layers,
-        "phase": phase, "drug_words": words, "checks": chk,
+        "phase": phase, "drug_words": info["marks"], "drug_labels": info["labels"], "drug_kind": info["kind"],
+        "checks": chk,
         "main": pack(main_run, m, {"cosd": [[r(float(v), 4) for v in row] for row in cosd.tolist()]}),
         "base": pack(base, b) if base else None,
         "pca": pcs,

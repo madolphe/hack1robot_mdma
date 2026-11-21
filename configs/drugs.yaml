@@ -147,6 +147,16 @@ drugs:
         end: 1.00
         level: 1
         words: [tired, gentle, afterglow, sunrise, quiet, home, grounded, calm, ordinary, soft, peace, tea, blanket, warm, rest, light, morning, grateful, clear, still, birds, kitchen, simple, bed, slow, smile, dawn, pale, settle, fresh, return, ease, hush, relief, sleep]
+  lsd_etats:
+    # Même voyage, mais chaque phase pousse un état (configs/states.yaml) au lieu de mots : vecteurs extraits par
+    # ./run.sh py states extract, dose α choisie par ./run.sh py states sweep ; `dose` en multiple de cet α.
+    # 0,75 : sur Qwen3.5-4B, l'α du balayage (0,08, réponses courtes en anglais) fait boucler une dissertation de
+    # 200 tokens en français pendant la dissolution ; 0,75 (α 0,06) reste lisible, 0,5 est discret.
+    label: LSD (états)
+    phases:
+      - {name: Pic sensoriel, start: 0.00, end: 0.40, state: synesthesia, dose: 0.75}
+      - {name: Dissolution, start: 0.40, end: 0.75, state: dissolution, dose: 0.75}
+      - {name: Rémanence, start: 0.75, end: 1.00, state: afterglow, dose: 0.75}
   champignons:
     label: Champignons
     phases:

@@ -179,6 +179,8 @@ const fmt = (v, d = 3) => v == null || Number.isNaN(v) ? '—' : (Math.abs(v) >=
 const pct = (v) => v == null ? '—' : (100 * v).toLocaleString('fr-FR', { maximumFractionDigits: v < 0.01 ? 2 : 1 }) + ' %';
 const L = D.layers, NL = L.length, T = D.main.tokens.length;
 const inBand = (l) => D.band.includes(l), inDrug = (l) => D.drug_layers.includes(l);
+const STATES = D.drug_kind === 'states';  // drogue par états : les mots marqués sont la signature de l'état injecté
+const drugLabel = (t) => (D.drug_labels && D.drug_labels[t]) || (D.drug_words[t] || []).join(', ');
 
 /* ---------- en-tête ---------- */
 $('#sub').textContent = `${D.run}` + (D.baseline ? ` · témoin sobre : ${D.baseline}` : '');
@@ -228,7 +230,9 @@ const METRICS = [
   { k: 'ent', label: 'Entropie', desc: 'Entropie de la lecture, en nats : basse = la lentille lit un mot net, haute = lecture diffuse.' },
   { k: 'p1', label: 'p du 1er token', desc: 'Probabilité du premier token lu.' },
   { k: 'rank', label: 'Rang du token suivant', desc: 'Rang, dans la lecture, du token que le modèle a vraiment écrit ensuite (0 = premier). Échelle log : clair = prévu, foncé = loin.', log: true, plus1: true },
-  { k: 'mass', label: 'Mots injectés', desc: 'Part de la lecture prise par les mots que la drogue injectait à ce pas (pour le témoin : les mêmes mots, aux mêmes pas).', pct: true },
+  { k: 'mass', label: STATES ? 'Signature de l\'état' : 'Mots injectés', desc: STATES
+      ? 'Part de la lecture prise par la signature lexicale de l\'état injecté à ce pas, c\'est-à-dire les mots que la lentille lit dans le vecteur d\'état lui-même (pour le témoin : les mêmes mots, aux mêmes pas).'
+      : 'Part de la lecture prise par les mots que la drogue injectait à ce pas (pour le témoin : les mêmes mots, aux mêmes pas).', pct: true },
   { k: 'cosd', label: 'cos(h, drogue)', desc: 'Cosinus entre le résidu et la direction injectée à ce pas.', mainOnly: true },
   { k: 'conv', label: 'cos(J·h, couche 30)', desc: 'Ressemblance de la lecture avec celle de la dernière couche.' },
 ];
@@ -329,7 +333,7 @@ hm.addEventListener('mousemove', (ev) => {
   const val = metric.pct ? pct(v) : fmt(v);
   showTip(ev, el('div', {}, el('div', { class: 'h' }, `pas ${t} · couche ${L[li]}`),
     el('div', {}, 'token ', el('span', { class: 'tok' }, showTok(R.tokens[t])), `  ${metric.label} = ${val}`),
-    words.length && run === 'main' ? el('div', { class: 'm' }, `drogue (α ${fmt(D.main.alpha[t])}) : ${words.join(', ')}`) : null,
+    words.length && run === 'main' ? el('div', { class: 'm' }, `drogue (α ${fmt(D.main.alpha[t])}) : ${drugLabel(t)}`) : null,
     el('div', { class: 'm', style: 'margin-top:4px' }, 'lecture de la lentille :'), readList(R, t, li, run === 'main' ? words : null)));
 });
 hm.addEventListener('mouseleave', hideTip);
@@ -340,7 +344,7 @@ function drawColumn() {
   const words = D.drug_words[t] || [];
   box.append(el('div', { class: 'row' }, el('b', {}, `Pas ${t}`), ' · drogué : ', el('span', { class: 'tok' }, showTok(D.main.tokens[t])),
     D.base && t < D.base.tokens.length ? [' · sobre : ', el('span', { class: 'tok' }, showTok(D.base.tokens[t]))] : null,
-    words.length ? el('span', { class: 'lbl', style: 'margin-left:8px' }, `drogue α ${fmt(D.main.alpha[t])} : ${words.join(', ')} (◆ entourés)`) : null));
+    words.length ? el('span', { class: 'lbl', style: 'margin-left:8px' }, `drogue α ${fmt(D.main.alpha[t])} : ${drugLabel(t)} (${STATES ? 'mots de sa signature' : 'mots injectés'} entourés)`) : null));
   const tb = el('table', {}, el('tr', {}, el('th', {}, 'couche'), el('th', {}, 'drogué : lecture (top 5)'), D.base ? el('th', {}, 'sobre, même pas') : null));
   for (let li = NL - 1; li >= 0; li--) {
     const cellRead = (R, w) => el('td', {}, ...R.tops[t][li].map((s, i) => el('span', { class: 'tok' + (w && w.includes(s.trim().toLowerCase()) ? ' inj' : ''), style: 'margin-right:4px', title: pct(R.topp[t][li][i]) }, showTok(s))));
@@ -357,7 +361,7 @@ const PROFILES = [
   { k: 'hn', label: '‖h‖ médian', agg: median, unit: '' },
   { k: 'ent', label: 'Entropie moyenne', agg: mean, unit: 'nats' },
   { k: 'rank', label: 'Rang médian du token suivant', agg: median, log: true, unit: 'échelle log, 0 = prévu' },
-  { k: 'mass', label: 'Part des mots injectés', agg: mean, pct: true, unit: 'moyenne sur les pas' },
+  { k: 'mass', label: STATES ? 'Part de la signature de l\'état' : 'Part des mots injectés', agg: mean, pct: true, unit: 'moyenne sur les pas' },
 ];
 function profile(R, p) { return L.map((_, li) => p.agg(R.metrics[p.k].map((row) => row[li]))); }
 function drawMulti() {
@@ -446,6 +450,7 @@ function drawPCA() {
 /* ---------- tranches ---------- */
 function drawSlices() {
   const box = $('#slicegrid'); box.replaceChildren();
+  if (STATES) $('#slices > p.lead').textContent = 'L\'image de chaque tranche et ses mots intérieurs ; les mots entourés ◆ font partie de la signature lexicale de l\'état injecté pendant la tranche.';
   for (const w of D.windows) {
     const drawn = new Set(D.drug_words.slice(w.start, w.end).flat().map((x) => x.toLowerCase()));
     const img = D.frames[w.index] ? el('img', { src: D.frames[w.index], alt: `image de la tranche ${w.index}`, loading: 'lazy' }) : null;

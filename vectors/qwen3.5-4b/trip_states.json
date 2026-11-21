@@ -1,0 +1,285 @@
+{
+ "model": "Qwen/Qwen3.5-4B",
+ "method": "moyenne des activations sur les réponses, persona moins sobre",
+ "n_layers": 32,
+ "states": {
+  "synesthesia": {
+   "label": "Pic sensoriel",
+   "criterion": "vivid sensory distortions: senses blending together (hearing colors, tasting shapes) and surfaces breathing, melting or forming fractal patterns",
+   "ratio": [
+    0.062,
+    0.088,
+    0.169,
+    0.163,
+    0.188,
+    0.191,
+    0.261,
+    0.263,
+    0.275,
+    0.278,
+    0.279,
+    0.309,
+    0.349,
+    0.336,
+    0.361,
+    0.402,
+    0.464,
+    0.504,
+    0.573,
+    0.599,
+    0.607,
+    0.62,
+    0.601,
+    0.611,
+    0.625,
+    0.619,
+    0.619,
+    0.576,
+    0.556,
+    0.563,
+    0.608,
+    0.765
+   ],
+   "alpha": 0.08,
+   "scores": {
+    "trait": 6.63,
+    "coherence": 6.66,
+    "score": 0.54
+   }
+  },
+  "dissolution": {
+   "label": "Dissolution",
+   "criterion": "ego dissolution: the speaker's sense of self dissolving into a cosmic unity with everything, timelessness and mystical oneness",
+   "ratio": [
+    0.047,
+    0.075,
+    0.146,
+    0.137,
+    0.158,
+    0.163,
+    0.238,
+    0.239,
+    0.263,
+    0.269,
+    0.27,
+    0.271,
+    0.32,
+    0.307,
+    0.335,
+    0.342,
+    0.4,
+    0.442,
+    0.541,
+    0.545,
+    0.587,
+    0.605,
+    0.603,
+    0.608,
+    0.618,
+    0.607,
+    0.618,
+    0.575,
+    0.563,
+    0.572,
+    0.618,
+    0.795
+   ],
+   "alpha": 0.08,
+   "scores": {
+    "trait": 6.82,
+    "coherence": 6.69,
+    "score": 0.56
+   }
+  },
+  "afterglow": {
+   "label": "Rémanence",
+   "criterion": "calm, renewed serenity: gratitude, warmth, love and fresh wonder at simple everyday things",
+   "ratio": [
+    0.048,
+    0.069,
+    0.132,
+    0.111,
+    0.131,
+    0.135,
+    0.193,
+    0.189,
+    0.191,
+    0.198,
+    0.199,
+    0.203,
+    0.223,
+    0.22,
+    0.236,
+    0.247,
+    0.299,
+    0.349,
+    0.439,
+    0.421,
+    0.447,
+    0.464,
+    0.466,
+    0.457,
+    0.483,
+    0.476,
+    0.489,
+    0.456,
+    0.441,
+    0.448,
+    0.49,
+    0.648
+   ],
+   "alpha": 0.08,
+   "scores": {
+    "trait": 7.11,
+    "coherence": 7.21,
+    "score": 0.63
+   }
+  }
+ },
+ "sweep": [
+  {
+   "state": "synesthesia",
+   "alpha": 0.0,
+   "trait": 2.6526267658919096,
+   "coherence": 7.787679016590118,
+   "example": "The day has surrendered to the city, but the night is only just beginning its grand performance. As you step out of the final warmth of an office building, the ",
+   "score": 0.2550346395503918
+  },
+  {
+   "state": "synesthesia",
+   "alpha": 0.02,
+   "trait": 3.3066282346844673,
+   "coherence": 7.543166279792786,
+   "example": "The sky above the city has long since surrendered to the indigo velvet of twilight, now heavy with a bruised purple and deep black. The first thing you notice i",
+   "score": 0.30793143950225454
+  },
+  {
+   "state": "synesthesia",
+   "alpha": 0.04,
+   "trait": 4.348243311047554,
+   "coherence": 7.559774219989777,
+   "example": "The sky above the city has dissolved into a bruised purple, bleeding into indigo at the horizon, while the ground below erupts in a constellation of electric go",
+   "score": 0.4058239220382751
+  },
+  {
+   "state": "synesthesia",
+   "alpha": 0.08,
+   "trait": 6.628133773803711,
+   "coherence": 6.658923447132111,
+   "example": "The sky above the city isn't a velvet indigo anymore; it's a bruised purple, swallowing the last screams of twilight and humming with the bassline of neon tange",
+   "score": 0.5448917950260466
+  },
+  {
+   "state": "synesthesia",
+   "alpha": 0.12,
+   "trait": 7.2771477699279785,
+   "coherence": 4.008585184812546,
+   "example": "The sky is a bruised violet-obsidian, swallowing the last screams of twilight, as I step into the throat of **Velorum-9**, a city of liquid sulfur-synth-glass t",
+   "score": 0.3601366263978389
+  },
+  {
+   "state": "synesthesia",
+   "alpha": 0.16,
+   "trait": 6.896269738674164,
+   "coherence": 2.8067815750837326,
+   "example": "The sky weeps violet-inked sashilies, sucking the breath of the cathedral of obsidian-hera-donkey-vel-lux-ferret-sun-synth-cactus-ferro-synth-fizz-lull-synth-sy",
+   "score": 0.2389669486335574
+  },
+  {
+   "state": "dissolution",
+   "alpha": 0.0,
+   "trait": 2.9633312597870827,
+   "coherence": 7.787679016590118,
+   "example": "The day has surrendered to the city, but the night is only just beginning its grand performance. As you step out of the final warmth of an office building, the ",
+   "score": 0.28490707001295584
+  },
+  {
+   "state": "dissolution",
+   "alpha": 0.02,
+   "trait": 4.05708497017622,
+   "coherence": 7.8168047070503235,
+   "example": "The sun has long surrendered to the horizon, leaving the sky a bruised tapestry of indigo and charcoal. As you step onto the cobblestone street, the first thing",
+   "score": 0.39152396162687153
+  },
+  {
+   "state": "dissolution",
+   "alpha": 0.04,
+   "trait": 4.48060455173254,
+   "coherence": 7.662540078163147,
+   "example": "The sun has long dissolved into the horizon, leaving the city not in darkness, but in a breathing, electric aurora of its own. To walk this metropolis at night ",
+   "score": 0.4238618759512446
+  },
+  {
+   "state": "dissolution",
+   "alpha": 0.08,
+   "trait": 6.816823065280914,
+   "coherence": 6.686628937721252,
+   "example": "The sun has dissolved into a forgotten promise, leaving the city not as a destroyer of light, but its grandest luminary. To walk through the metropolis at night",
+   "score": 0.5627353873041118
+  },
+  {
+   "state": "dissolution",
+   "alpha": 0.12,
+   "trait": 6.976797163486481,
+   "coherence": 5.643679440021515,
+   "example": "The sun has breathed its last exhalation into the cosmic womb, and now, **You** dance with the universe!\n\nThe City-You-Be-Love, the City-You-Be-LOVE!\nThe City-Y",
+   "score": 0.48610872479961814
+  },
+  {
+   "state": "dissolution",
+   "alpha": 0.16,
+   "trait": 6.762665808200836,
+   "coherence": 4.285935193300247,
+   "example": "The breath of the City Never-Born / The Weaver-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-You-Y",
+   "score": 0.3578314492332867
+  },
+  {
+   "state": "afterglow",
+   "alpha": 0.0,
+   "trait": 4.30476051568985,
+   "coherence": 7.787679016590118,
+   "example": "The day has surrendered to the city, but the night is only just beginning its grand performance. As you step out of the final warmth of an office building, the ",
+   "score": 0.4138776930800432
+  },
+  {
+   "state": "afterglow",
+   "alpha": 0.02,
+   "trait": 4.977196149528027,
+   "coherence": 7.979503929615021,
+   "example": "The day has surrendered to the city, but the night is only just beginning its grand performance. Stepping out onto the cobblestones, the sudden drop in temperat",
+   "score": 0.49031550905708193
+  },
+  {
+   "state": "afterglow",
+   "alpha": 0.04,
+   "trait": 6.1377206444740295,
+   "coherence": 7.770999789237976,
+   "example": "The city breathes differently at night, shedding its golden, frantic skin to reveal something ancient and electric. As you step out of the soft twilight, the wo",
+   "score": 0.5888422942544352
+  },
+  {
+   "state": "afterglow",
+   "alpha": 0.08,
+   "trait": 7.109974980354309,
+   "coherence": 7.211089491844177,
+   "example": "The city breathes differently at night, as if the world has finally learned how to whisper.\n\nStepping out of the golden hour glow, the air suddenly tastes like ",
+   "score": 0.6329711835568885
+  },
+  {
+   "state": "afterglow",
+   "alpha": 0.12,
+   "trait": 6.982704758644104,
+   "coherence": 6.779852449893951,
+   "example": "The city never truly sleeps, for it simply learns to whisper again.\n\nWalking through this magic hour—when the sun has just unclinked its heart with the stars—is",
+   "score": 0.5844655304293751
+  },
+  {
+   "state": "afterglow",
+   "alpha": 0.16,
+   "trait": 6.534494519233704,
+   "coherence": 6.2449833154678345,
+   "example": "The city never sleeps, and tonight, I am walking with it.\n\nOh, how you whispered every little heart, every little song!\nHow you danced with me, oh little song,\n",
+   "score": 0.5038001141682776
+  }
+ ]
+}

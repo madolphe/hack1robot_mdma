@@ -33,16 +33,23 @@ def names() -> list[str]:
 
 
 class Schedule:
-    """α(t), phase et mots tirés à chaque pas pour une drogue du catalogue."""
+    """α(t), phase et mots tirés à chaque pas pour une drogue du catalogue.
+
+    Une phase pousse soit des mots (`words`, `level`), soit un état (`state` : clé de configs/states.yaml, `dose` :
+    multiple de l'α que le balayage a retenu pour cet état et ce modèle, vectors/<modèle>/trip_states.pt)."""
 
     def __init__(self, name: str, intensity: float, n_tokens: int, seed: int, tok=None, log=print,
-                 scale: float = 1.0):
+                 scale: float = 1.0, states: dict | None = None):
         cat = catalog()
         if name not in cat["drugs"]:
             raise ValueError(f"drogue inconnue : {name}")
         self.name = name
         self.label = cat["drugs"][name]["label"]
         self.phases = cat["drugs"][name]["phases"]
+        self.states = states or {}
+        missing = [p["state"] for p in self.phases if "state" in p and p["state"] not in self.states]
+        if missing:
+            raise ValueError(f"états sans vecteur pour ce modèle : {missing} (./run.sh py states extract puis sweep)")
         # `scale` adapte les niveaux, calibrés sur Gemma 3 12B, à un autre modèle (Qwen3.5-4B : ×15)
         self.levels = {int(k): float(v) * scale for k, v in cat["levels"].items()}
         self.cap = float(cat.get("alpha_cap", 0.006)) * scale
@@ -71,22 +78,27 @@ class Schedule:
         return len(self.phases) - 1
 
     def base_alpha(self, i: int) -> float:
-        return self.levels[int(self.phases[i]["level"])]
+        p = self.phases[i]
+        if "state" in p:
+            return float(self.states[p["state"]]["alpha"]) * float(p.get("dose", 1.0))
+        return self.levels[int(p["level"])]
 
-    def alpha(self, step: int) -> float:
+    def weights(self, step: int) -> list[tuple[int, float]]:
+        """Phases actives et leur poids : lissage linéaire autour des frontières, sur `transition` de la prise."""
         x = step / self.T
         i = self.phase_at(x)
-        a = self.base_alpha(i)
         h = self.trans / 2
-        # lissage linéaire autour des frontières de phase, sur `transition` de la prise
         if i > 0 and x < self.phases[i]["start"] + h:
-            b = self.phases[i]["start"]
-            f = (x - (b - h)) / self.trans
-            a = (1 - f) * self.base_alpha(i - 1) + f * a
-        elif i + 1 < len(self.phases) and x > self.phases[i]["end"] - h:
-            b = self.phases[i]["end"]
-            f = (x - (b - h)) / self.trans
-            a = (1 - f) * a + f * self.base_alpha(i + 1)
+            f = (x - (self.phases[i]["start"] - h)) / self.trans
+            return [(i - 1, 1 - f), (i, f)]
+        if i + 1 < len(self.phases) and x > self.phases[i]["end"] - h:
+            f = (x - (self.phases[i]["end"] - h)) / self.trans
+            return [(i, 1 - f), (i + 1, f)]
+        return [(i, 1.0)]
+
+    def alpha(self, step: int) -> float:
+        ws = self.weights(step)
+        a = self.base_alpha(ws[0][0]) if len(ws) == 1 else sum(w * self.base_alpha(i) for i, w in ws)
         return min(self.cap, a * self.intensity)
 
     def draw(self, step: int) -> list[str] | None:
@@ -126,6 +138,9 @@ class CatalogDrug:
         self.cache: dict[str, dict[int, torch.Tensor]] = {}
         self.spec = {"word": sched.label, "on_prompt": False}
         self.log = log
+        self.units = {k: {l: s["unit"][l].to(reader.device, torch.float32) for l in self.layers}
+                      for k, s in sched.states.items()}
+        self.mix: dict[str, float] = {}
 
     def word_vecs(self, w: str) -> dict[int, torch.Tensor]:
         if w not in self.cache:
@@ -137,6 +152,17 @@ class CatalogDrug:
             self.alpha = 0.0
             return
         self.alpha = self.s.alpha(step)
+        ws = [(i, w) for i, w in self.s.weights(step) if "state" in self.s.phases[i]]
+        if ws:  # phase pilotée par un état : mélange des vecteurs d'état pondéré par leurs doses
+            parts = [(self.s.phases[i]["state"], w * self.s.base_alpha(i)) for i, w in ws]
+            tot = sum(p for _, p in parts)
+            self.mix = {k: round(p / tot, 3) for k, p in parts} if tot else {}
+            self.vec = {l: sum(p * self.units[k][l] for k, p in parts) / tot for l in self.layers} if tot else {}
+            self.s.words = []
+            if not self.vec:
+                self.alpha = 0.0
+            return
+        self.mix = {}
         new = self.s.draw(step)
         if new is not None:
             if new and self.alpha > 0:
@@ -151,8 +177,11 @@ class CatalogDrug:
             self.alpha = 0.0
 
     def state(self, step: int) -> dict:
-        return {"word": self.s.label, "alpha": round(self.alpha, 5), "phase": self.s.phase_name(max(step, 0)),
-                "words": list(self.s.words)}
+        out = {"word": self.s.label, "alpha": round(self.alpha, 5), "phase": self.s.phase_name(max(step, 0)),
+               "words": list(self.s.words)}
+        if self.mix:
+            out["states"] = dict(self.mix)
+        return out
 
 
 def check(config: str | None = None):

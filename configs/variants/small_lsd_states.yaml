@@ -1,0 +1,4 @@
+# Même prise que small_lsd.yaml (question, graine, durée), avec la drogue par états au lieu de mots
+base: configs/variants/small_lsd.yaml
+run_tag: small-lsd-states
+drug: {name: lsd_etats, intensity: 1.0}

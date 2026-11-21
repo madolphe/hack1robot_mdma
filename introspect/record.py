@@ -137,13 +137,19 @@ def prepare_drugs(cfg, reader: Reader, log, tok=None):
         out.append(FixedDrug(spec, set(layers), vec))
     dc = cfg.get("drug") or {}
     if dc.get("name"):
-        from .drugs import CatalogDrug, Schedule
+        from .drugs import CatalogDrug, Schedule, catalog
 
+        states = None
+        if any("state" in p for p in catalog()["drugs"].get(dc["name"], {}).get("phases", [])):
+            from .states import load_pack
+            states = load_pack(cfg)["states"]  # vecteurs d'état du modèle (introspect/states.py)
         sched = Schedule(dc["name"], dc.get("intensity", 1.0), cfg["generation"]["max_new_tokens"],
-                         cfg["generation"]["seed"], tok=tok, log=log, scale=dc.get("alpha_scale", 1.0))
+                         cfg["generation"]["seed"], tok=tok, log=log, scale=dc.get("alpha_scale", 1.0), states=states)
         cd = CatalogDrug(sched, reader, log)
         log(f"drogue catalogue '{sched.label}' ×{sched.intensity} sur {sched.T} tokens, couches {min(cd.layers)}..{max(cd.layers)} ; "
-            + " | ".join(f"{p['name']} {p['start']:.2f}-{p['end']:.2f} niv.{p['level']}" for p in sched.phases))
+            + " | ".join(f"{p['name']} {p['start']:.2f}-{p['end']:.2f} "
+                         + (f"état {p['state']} α {sched.base_alpha(i):.3f}" if "state" in p else f"niv.{p['level']}")
+                         for i, p in enumerate(sched.phases)))
         out.append(cd)
     return out
 
