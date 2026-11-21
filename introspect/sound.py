@@ -230,8 +230,90 @@ def stable_audio_3(la: dict, clips: list[dict], workdir: Path, log) -> tuple[lis
     return [a for a, _ in out], out[0][1]
 
 
+def segments(run_dir: Path, wins, durs, max_s: float) -> list[list[int]]:
+    """Tranches regroupées en segments de nappe : une phase de drogue par segment (coupée au-delà de max_s),
+    ou des blocs d'environ max_s sans drogue."""
+    from .windows import load_trace
+
+    trace = load_trace(run_dir)
+    phase = [(trace[w["start"]]["drug"][0].get("phase") if trace[w["start"]]["drug"] else None) for w in wins]
+    groups, cur, t = [], [], 0.0
+    for k in range(len(wins)):
+        if cur and (phase[k] != phase[cur[-1]] or t + durs[k] > max_s):
+            groups.append(cur)
+            cur, t = [], 0.0
+        cur.append(k)
+        t += durs[k]
+    return groups + ([cur] if cur else [])
+
+
+def sono_bed(run_dir: Path, cfg: dict, wins, feats, tfeats, durs, log):
+    """Nappe continue (sound.sono.segments: phase) : un clip Stable Audio et un drone par segment, au lieu d'un par
+    tranche ; fondus longs entre segments et une seule normalisation, pour une nappe sans à-coups."""
+    sc = cfg["sound"]["sono"]
+    la = sc["layer_a"]
+    xf = float(sc.get("segment_crossfade_s", 1.5))
+    groups = segments(run_dir, wins, durs, float(sc.get("segment_max_s", 20)))
+    starts = np.cumsum([0.0] + list(durs))
+    total = int((sum(durs) + cfg["video"]["crossfade_s"] + xf) * SR)
+    segs = []
+    for g in groups:
+        agg: dict[str, float] = {}
+        best: dict[str, tuple[float, int]] = {}
+        for k in g:
+            for word, wt in wins[k]["words"]:
+                agg[word] = agg.get(word, 0.0) + wt
+                if wt > best.get(word, (0, 0))[0]:
+                    best[word] = (wt, k)
+        top = sorted(agg.items(), key=lambda x: -x[1])[:6]
+        tf = {w: {**tfeats.get(best[w][1], {}).get(w, {}), "novelty": 0.0} for w, _ in top}  # pas de salves : nappe lisse
+        segs.append({"slices": g, "start": float(starts[g[0]]), "dur": float(sum(durs[k] for k in g)) + xf,
+                     "words": top, "tf": tf, "prompt": ", ".join(w for w, _ in top) + ", " + la["suffix"]})
+    clips_a = {}
+    if la.get("enabled"):
+        try:
+            if la.get("engine") == "stable_audio_3":
+                jobs = [{"prompt": s["prompt"], "duration": round(min(120.0, s["dur"] + 0.5), 2), "seed": 2000 + i}
+                        for i, s in enumerate(segs)]
+                clips, sr_a = stable_audio_3(la, jobs, run_dir / "audio" / "sa3_bed", log)
+                clips_a = {i: (a if sr_a == SR else to_sr(a, sr_a)) for i, a in enumerate(clips)}
+            else:
+                log("nappe par segments : couche A seulement avec engine stable_audio_3")
+        except Exception as e:
+            log("couche A désactivée :", repr(e))
+    rng = np.random.default_rng(1)
+    bed = np.zeros((total, 2), np.float32)
+    for i, s in enumerate(segs):
+        n = int(s["dur"] * SR)
+        mix = np.zeros((n, 2), np.float32)
+        if i in clips_a:
+            a = clips_a[i][:n]
+            if a.ndim == 1:
+                a = np.stack([a, a], 1)
+            mix[: len(a)] += a / max(1e-6, float(np.abs(a).max())) * 0.8 * 0.7
+        if sc["layer_b"].get("enabled"):
+            mix += synth_window(s["words"], feats, s["tf"], s["dur"], SR, rng) * (0.5 if i in clips_a else 0.9)
+        r = min(int(xf * SR), n // 2)
+        env = np.ones(n, np.float32)
+        if i > 0:
+            env[:r] = np.linspace(0, 1, r)
+        if i < len(segs) - 1:
+            env[-r:] = np.linspace(1, 0, r)
+        t0 = int(s["start"] * SR) - (r // 2 if i > 0 else 0)
+        end = min(total, t0 + n)
+        bed[t0:end] += (mix * env[:, None])[: end - t0]
+    bed = bed / max(1e-6, float(np.abs(bed).max())) * 0.95
+    sf.write(run_dir / "audio" / "sono_bed.wav", bed, SR)
+    (run_dir / "audio" / "sono_bed.json").write_text(json.dumps(
+        [{k: s[k] for k in ("slices", "start", "dur", "prompt")} for s in segs], ensure_ascii=False, indent=1))
+    lengths = ", ".join(f"{s['dur']:.0f} s" for s in segs)
+    log(f"nappe continue : {len(segs)} segments ({lengths}), couche A : {'oui' if clips_a else 'non'}")
+
+
 def sono(run_dir: Path, cfg: dict, wins, feats, tfeats, durs, log):
     sc = cfg["sound"]["sono"]
+    if sc.get("segments") == "phase":
+        return sono_bed(run_dir, cfg, wins, feats, tfeats, durs, log)
     c = cfg["video"]["crossfade_s"]
     la = sc["layer_a"]
     clips_a = {}

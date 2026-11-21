@@ -174,6 +174,14 @@ uv pip install --python .venv-audio/bin/python --torch-backend=cu126 torch==2.7.
 ./run.sh all --config configs/variants/img_flux2_klein.yaml
 ```
 
+**Rythme** : `small.yaml` vise 40 s avec une image toutes les ~1,5 s (`video.target_duration_s: 40`, `slice_target_s: 1.5`, `min_duration_s: 1.0`, `crossfade_s: 0.5`) et tient la durée (`video.fit_target: true` : si les voix et leurs queues de réverbération dépassent, les tranches sont resserrées et le son déborde sur l'image suivante). Sur la prise `lsd_etats` : 30 images de 1,0 à 2,1 s, 40,5 s, contre 20 images de 2 à 4,1 s et 61,8 s avec les réglages de `default.yaml`. Pour recouper une vidéo sans relancer le LLM : `./run.sh py rewindow --from runs/<id> --run-id <nouveau> --config <config>`, puis `render`, `voice`, `sound`, `assemble`.
+
+**Son** (réglages de `small.yaml`, ceux de `default.yaml` gardent l'ancien comportement) :
+
+- `sound.sono.segments: phase` : la nappe n'est plus faite d'un clip Stable Audio et d'un drone par image (toutes les ~1,3 s), mais d'un segment continu par phase de drogue (20 s au plus, fondus de 1,5 s, une seule normalisation ; sans drogue, des blocs de 20 s). Le prompt d'un segment réunit les mots intérieurs de ses tranches. Avant : la nappe baissait de 4,5 dB à chaque changement d'image, des clips presque muets étaient remontés jusqu'à ×12,5, et le drone ajoutait 2,3 salves de bruit par seconde.
+- `sound.drug_fx: 0.35` : force des effets « drogués » (modulation en anneau et saturation de la nappe ; phaser, distorsion et vibrato de la voix). Ils étaient à 100 % sur toute la prise par états (α 0,06 = niveau 4) : un son métallique de panne.
+- `sound.duck_smooth_s: 0.5` (la nappe baisse sous la voix sans pomper) et `sound.loudness_db: -17` (niveau moyen tenu par un limiteur, crêtes à -1,5 dBFS pour l'encodage AAC).
+
 Une vidéo d'une minute prend environ **2 min** (record 20 s, images 30 s, voix 10 s, son 27 s dont 4 s pour les 20 clips Stable Audio 3, montage 25 s par mode). Avec Stable Audio Open 1.0 (`layer_a: {engine: diffusers, model: stabilityai/stable-audio-open-1.0, steps: 100}`), ses clips prennent 4 min à eux seuls. Sur A6000 avec les grands modèles : ~7 min.
 
 Ce qui change dans le code :

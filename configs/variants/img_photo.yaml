@@ -1,0 +1,7 @@
+# Images en photographie de cinéma (variante 4 de la comparaison des prompts d'image, runs/small-lsd-states-40s-v2/prompts)
+# À combiner avec une autre config : ./run.sh py rewindow --from runs/<id> --run-id <nouveau> --config configs/variants/img_photo.yaml
+base: configs/variants/small_lsd_states.yaml
+run_tag: photo
+image:
+  prompt_template: "A surreal cinematic photograph of a dreamlike scene inspired by {words}. {style}"
+  style: "35mm film grain, volumetric light, shallow depth of field, mysterious atmosphere, no text"

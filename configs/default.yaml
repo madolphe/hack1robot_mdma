@@ -37,6 +37,7 @@ image:
   prompt_template: "A surreal dreamlike oil painting, a visual metaphor of {words}. {style}"
   intermediates: 0
   repeat_top: 0
+  retry_letterbox: 3          # image à bandes noires en haut et en bas : jusqu'à 3 nouvelles graines
   seed: 1
   style: "Diffuse light, soft haze, rich colors, painterly brushstrokes, cinematic composition"
 voice: {engine: kokoro, n_voices: 1, voice: ff_siwis, voice_en: af_heart, english_voice: false, speed: 0.9, mode: new_words, polyphony: false, gap_s: 0.25}
@@ -47,7 +48,11 @@ sound:
   sono:
     layer_a: {enabled: true, model: stabilityai/stable-audio-open-1.0, suffix: "ambient texture, drone, field recording", steps: 100}
     layer_b: {enabled: true, sample_rate: 44100}
+    segments: slice      # slice : un clip par tranche ; phase : nappe continue par phase de drogue (≤ segment_max_s)
   duck_db: -6
+  duck_smooth_s: 0.15    # lissage de l'enveloppe de la voix pour baisser la nappe
+  drug_fx: 1.0           # force des effets « drogués » du son (voix et nappe), 1 = pleine force au niveau 4
+  loudness_db: null      # niveau moyen visé du mixage (dBFS RMS, crêtes limitées) ; null = crête à 0,9 seulement
 video:
   fps: 30
   min_duration_s: 2.0
@@ -56,3 +61,4 @@ video:
   height: 1080
   target_duration_s: 60     # durée globale visée (approx.) ; null = une tranche tous les windows.stride tokens
   slice_target_s: 3.0       # durée visée par tranche quand target_duration_s est fixé
+  fit_target: false         # true : resserrer aussi une vidéo plus longue que la cible (les voix débordent sur l'image suivante)

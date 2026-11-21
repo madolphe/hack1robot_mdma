@@ -107,6 +107,9 @@ def trace_features(run_dir: Path, wins: list[dict], cfg: dict | None = None) -> 
     layers = sorted(trace[0]["layers"], key=int)
     lo, hi = int(layers[0]), int(layers[-1])
     full = 0.004 * ((cfg or {}).get("drug") or {}).get("alpha_scale", 1.0)  # α du niveau 4 = drogue pleine
+    # sound.drug_fx : force des effets « drogués » du son (modulation en anneau, saturation, phaser, distorsion),
+    # 1 = pleine force au niveau 4 ; en dessous, le son garde la trace de la drogue sans sonner comme une panne
+    fx = float(((cfg or {}).get("sound") or {}).get("drug_fx", 1.0))
     out = {}
     for w in wins:
         recs = trace[w["start"]: w["end"]]
@@ -122,7 +125,7 @@ def trace_features(run_dir: Path, wins: list[dict], cfg: dict | None = None) -> 
                             num += int(l) * p; den += p
             layer = (num / den) if den else (lo + hi) / 2
             per[word] = {"layer": round((layer - lo) / max(1, hi - lo), 4), "score": weight,
-                         "novelty": 1.0 if word in w["new"] else 0.0, "entropy": round(ent, 3), "drug": round(min(1.0, drug / full), 3)}
+                         "novelty": 1.0 if word in w["new"] else 0.0, "entropy": round(ent, 3), "drug": round(min(1.0, drug / full) * fx, 3)}
         out[w["index"]] = per
     return out
 

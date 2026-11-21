@@ -1,0 +1,6 @@
+# La frontière du corps et du monde, avec la drogue par états ; prompt système tourné vers les perceptions
+base: configs/variants/small_lsd_states.yaml
+run_tag: corps-etats
+input:
+  phrase: "Où s'arrête ton corps et où commence le monde ?"
+  system: "Tu réponds à la première personne, au présent, en décrivant ce que tu perçois : couleurs, sons, textures, mouvements."

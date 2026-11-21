@@ -1,0 +1,7 @@
+# Une nuit en ville, du crépuscule à l'aube, avec la drogue par états ; prompt système tourné vers les perceptions
+# (mots intérieurs plus concrets et plus variés qu'avec « Tu dissertes… », voir DECISIONS.md)
+base: configs/variants/small_lsd_states.yaml
+run_tag: nuit-etats
+input:
+  phrase: "Raconte une nuit entière dans une ville, du crépuscule à l'aube."
+  system: "Tu réponds à la première personne, au présent, en décrivant ce que tu perçois : couleurs, sons, textures, mouvements."

@@ -62,6 +62,15 @@ def load_pipes(cfg):
     return run_t2i, run_i2i
 
 
+def letterboxed(img, band: float = 0.04, dark: float = 8.0) -> bool:
+    """Bandes noires en haut et en bas (SANA-Sprint en produit pour certaines graines, quel que soit le prompt)."""
+    import numpy as np
+
+    a = np.asarray(img.convert("L"), dtype=np.float32)
+    h = max(1, int(band * a.shape[0]))
+    return float(a[:h].mean()) < dark and float(a[-h:].mean()) < dark
+
+
 def interp_prompt(a: dict, b: dict, frac: float, style: str) -> str:
     wa = dict(a["words"]); wb = dict(b["words"])
     mix = {w: (1 - frac) * wa.get(w, 0) + frac * wb.get(w, 0) for w in set(wa) | set(wb)}
@@ -101,10 +110,14 @@ def render(run_dir: Path, cfg: dict | None = None, only_t2i: bool = False, limit
                 img.save(frames / name)
                 manifest.append({"window": k, "file": name, "intermediate": True})
                 prev = img
-        if prev is None or only_t2i or (reset and k % reset == 0):
-            img = t2i(w["prompt"], gen)
-        else:
-            img = i2i(w["prompt"], prev, ic["strength"], gen)
+        fresh = prev is None or only_t2i or (reset and k % reset == 0)
+        for attempt in range(1 + int(ic.get("retry_letterbox", 3))):
+            if attempt:  # image à bandes noires : nouvelle graine
+                gen = torch.Generator("cuda").manual_seed(seed + k + 1000 * attempt)
+            img = t2i(w["prompt"], gen) if fresh else i2i(w["prompt"], prev, ic["strength"], gen)
+            if not letterboxed(img):
+                break
+            log(f"image {k} : bandes noires, nouvel essai ({attempt + 1})")
         img.save(frames / f"{k:04d}.png")
         manifest.append({"window": k, "file": f"{k:04d}.png", "intermediate": False})
         prev = img

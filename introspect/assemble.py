@@ -58,13 +58,23 @@ def durations(run_dir: Path, cfg: dict, n: int) -> list[float]:
 
 def slice_durations(voice_durs: list[float], cfg: dict) -> list[float]:
     """Durée de chaque tranche : max(voix, minimum) ; si une durée cible est fixée et
-    que le total est plus court, on étire uniformément pour l'atteindre."""
+    que le total est plus court, on étire uniformément pour l'atteindre. Avec video.fit_target,
+    un total plus long est aussi resserré (sans passer sous le minimum) : la voix d'une tranche
+    et la queue de ses effets débordent alors sur l'image suivante."""
     vmin = cfg["video"]["min_duration_s"]
     d = [max(vmin, x) for x in voice_durs]
     T = cfg["video"].get("target_duration_s")
     if T and d and sum(d) < T:
         extra = (T - sum(d)) / len(d)
         d = [x + extra for x in d]
+    elif T and d and sum(d) > T and cfg["video"].get("fit_target"):
+        for _ in range(8):  # on resserre les tranches au-dessus du minimum jusqu'à tenir la cible
+            free = sum(x for x in d if x > vmin)
+            over = sum(d) - T
+            if over <= 1e-3 or free <= 0:
+                break
+            s = max(0.0, (free - over) / free)
+            d = [max(vmin, x * s) if x > vmin else x for x in d]
     return d
 
 
@@ -131,6 +141,10 @@ def voice_track(run_dir, cfg, durs, total):
 
 def sono_track(run_dir, cfg, durs, total):
     tr = np.zeros((total, 2), np.float32)
+    bed = run_dir / "audio" / "sono_bed.wav"
+    if cfg["sound"]["sono"].get("segments") == "phase" and bed.exists():  # nappe continue (sound.sono_bed)
+        place(tr, load_audio(bed), 0)
+        return tr
     c = int(cfg["video"]["crossfade_s"] * SR)
     t = 0
     for k, d in enumerate(durs):
@@ -149,9 +163,9 @@ def sono_track(run_dir, cfg, durs, total):
     return tr
 
 
-def duck(sono: np.ndarray, voice: np.ndarray, db: float) -> np.ndarray:
+def duck(sono: np.ndarray, voice: np.ndarray, db: float, smooth_s: float = 0.15) -> np.ndarray:
     env = np.abs(voice).max(axis=1)
-    win = int(0.15 * SR)
+    win = int(smooth_s * SR)
     env = np.convolve(env, np.ones(win) / win, mode="same")
     active = np.clip(env / (env.max() + 1e-9) * 8, 0, 1)
     gain = 1 - active * (1 - 10 ** (db / 20))
@@ -171,10 +185,24 @@ def build_audio(run_dir: Path, cfg: dict, mode: str, durs: list[float]) -> np.nd
         v = voice_track(run_dir, cfg, durs, total)
         s = sono_track(run_dir, cfg, durs, total)
         s = s / (np.abs(s).max() + 1e-9) * 0.5
-        mix = v + duck(s, v, cfg["sound"].get("duck_db", -6))
+        mix = v + duck(s, v, cfg["sound"].get("duck_db", -6), cfg["sound"].get("duck_smooth_s", 0.15))
     peak = np.abs(mix).max()
     if peak > 0:
         mix = mix / peak * 0.9
+    target = cfg["sound"].get("loudness_db")  # niveau moyen visé (dBFS RMS) ; les crêtes passent par un limiteur
+    if target is not None and peak > 0:
+        from pedalboard import Limiter, Pedalboard
+
+        def rms_db(x):
+            return 20 * np.log10(float(np.sqrt(np.mean(x ** 2))) + 1e-12)
+        g = 0.0
+        for _ in range(4):  # le limiteur ramène son seuil à 0 dBFS : on corrige le gain jusqu'à tenir la cible
+            y = Pedalboard([Limiter(threshold_db=-6.0, release_ms=150)])((mix * 10 ** (g / 20)).T.astype(np.float32), SR).T
+            y = y / max(float(np.abs(y).max()), 1e-9) * 10 ** (-1.5 / 20)  # crêtes à -1,5 dBFS : marge pour l'AAC
+            g += target - rms_db(y)
+            if abs(target - rms_db(y)) < 0.3:
+                break
+        mix = y
     return mix
 
 

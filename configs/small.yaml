@@ -20,8 +20,22 @@ image:
   model: Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers   # ~9 Go en bf16
   steps: 2
   guidance_scale: 4.5
+video:
+  # plus court et plus rythmé que default.yaml (60 s, une image toutes les 3 s, jusqu'à 20 % de plus à cause des
+  # queues de réverbération) : 40 s, une image toutes les 1,5 s, durée tenue
+  target_duration_s: 40
+  slice_target_s: 1.5
+  min_duration_s: 1.0
+  crossfade_s: 0.5
+  fit_target: true
 sound:
+  drug_fx: 0.35        # effets « drogués » du son à 35 % (à 1, modulation en anneau et distorsion pleines : son de panne)
+  duck_smooth_s: 0.5   # la nappe baisse sous la voix sans pomper à chaque mot
+  loudness_db: -17     # niveau moyen du mixage (dBFS RMS), crêtes tenues par un limiteur
   sono:
+    segments: phase    # une nappe continue par phase de drogue (≤ 20 s) au lieu d'un clip par image
+    segment_max_s: 20
+    segment_crossfade_s: 1.5
     # Stable Audio 3 small-sfx (licence à accepter sur HF, ~3,5 Go, 8 étapes), dans son propre environnement
     # .venv-audio (torch 2.7.1) ; sans lui, la couche A se désactive et la couche B (synthèse) reste.
     # Stable Audio Open 1.0 (diffusers, 100 étapes) : {engine: diffusers, model: stabilityai/stable-audio-open-1.0, steps: 100}
