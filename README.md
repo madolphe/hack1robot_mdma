@@ -182,6 +182,8 @@ uv pip install --python .venv-audio/bin/python --torch-backend=cu126 torch==2.7.
 - `sound.drug_fx: 0.35` : force des effets « drogués » (modulation en anneau et saturation de la nappe ; phaser, distorsion et vibrato de la voix). Ils étaient à 100 % sur toute la prise par états (α 0,06 = niveau 4) : un son métallique de panne.
 - `sound.duck_smooth_s: 0.5` (la nappe baisse sous la voix sans pomper) et `sound.loudness_db: -17` (niveau moyen tenu par un limiteur, crêtes à -1,5 dBFS pour l'encodage AAC).
 
+**Vidéo « Deforum »** (méthode de la branche `visuels`, `sana_deforum/`) : au lieu d'une image fixe par tranche, la caméra s'enfonce dans l'image (profondeur Depth Anything V2 Small, mouvement de `FovVid1CompSettings.txt`) et SANA-Sprint la répare en img2img toutes les 2 images ; le prompt de chaque tranche prend la main au début de la tranche. `./run.sh py deforum --run runs/<id>` après `assemble` (pour le son) : `runs/<id>/out_deforum.mp4`, ~3 min 15 pour 40 s. Réglages par défaut : force 0,30, couleur 0,2, transformer 1.6B, 15 i/s, une diffusion toutes les 3 images. `--cadence 2` (le réglage de référence) : ~4 min 45 ; `--fps 12` garde la même vitesse de caméra par seconde ; `--no-binning` (SANA à 1024×576 au lieu de 1344×768) : ~40 % plus rapide, rendu différent. Mesures, réglages essayés et limites : `sana_deforum/RAPPORT.md`.
+
 Une vidéo d'une minute prend environ **2 min** (record 20 s, images 30 s, voix 10 s, son 27 s dont 4 s pour les 20 clips Stable Audio 3, montage 25 s par mode). Avec Stable Audio Open 1.0 (`layer_a: {engine: diffusers, model: stabilityai/stable-audio-open-1.0, steps: 100}`), ses clips prennent 4 min à eux seuls. Sur A6000 avec les grands modèles : ~7 min.
 
 Ce qui change dans le code :

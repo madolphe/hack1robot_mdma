@@ -21,3 +21,4 @@ vendor/
 .zshrc
 .claude/*
 .gradio/
+out_sana_deforum/
