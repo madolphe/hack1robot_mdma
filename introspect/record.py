@@ -57,13 +57,22 @@ class FixedDrug:
 
 
 class Hooks:
-    """Un hook par bloc : applique les drogues puis capture la sortie de bloc."""
+    """Un hook par bloc : applique les drogues puis capture la sortie de bloc.
 
-    def __init__(self, blocks, capture_layers, drugs, reader: Reader):
+    Le flux résiduel additionne les sorties des blocs : un vecteur injecté à la couche k est encore présent tel quel
+    aux couches suivantes, et la lentille le relit (sa direction est faite pour cela). `injected[l]` garde la somme
+    de ce qui a été ajouté jusqu'à la couche l pour le token courant ; avec `subtract`, `read(l)` rend h − injected[l] :
+    la lecture montre ce que les couches ont calculé en réponse à la drogue, pas la poussée elle-même. Le modèle,
+    lui, reçoit toujours h avec la drogue."""
+
+    def __init__(self, blocks, capture_layers, drugs, reader: Reader, subtract: bool = True):
         self.capture_layers = set(capture_layers)
         self.drugs = drugs  # objets avec .layers, .vec {couche: v}, .alpha, update(step), state(step)
+        self.subtract = subtract
         self.step = -1  # -1 = prompt
         self.captured: dict[int, torch.Tensor] = {}
+        self.injected: dict[int, torch.Tensor | None] = {}
+        self.carried = None  # injection cumulée à la position du token courant (fp32)
         self.handles = []
         layers = self.capture_layers | {l for d in drugs for l in d.layers}
         for l in sorted(layers):
@@ -75,8 +84,15 @@ class Hooks:
 
     def set_step(self, step: int):
         self.step = step
+        self.captured, self.injected, self.carried = {}, {}, None
         for d in self.drugs:
             d.update(step)
+
+    def read(self, l: int) -> torch.Tensor:
+        """Résidu lu par la lentille à la couche l : sans l'injection cumulée si `subtract`."""
+        inj = self.injected.get(l)
+        h = self.captured[l].float()
+        return h - inj if self.subtract and inj is not None else h
 
     def _make(self, l):
         def hook(module, inputs, output):
@@ -92,10 +108,14 @@ class Hooks:
                         h = h + a * n * v
                     else:
                         n = h[:, -1:].float().norm(dim=-1, keepdim=True).to(h.dtype)
-                        h = torch.cat([h[:, :-1], h[:, -1:] + a * n * v], dim=1)
+                        new = h[:, -1:] + a * n * v
+                        delta = (new[0, -1].float() - h[0, -1].float())  # ce qui a vraiment été ajouté (arrondi bf16 compris)
+                        self.carried = delta if self.carried is None else self.carried + delta
+                        h = torch.cat([h[:, :-1], new], dim=1)
                     changed = True
             if l in self.capture_layers and self.step >= 0:
                 self.captured[l] = h[0, -1].detach()
+                self.injected[l] = self.carried
             if changed:
                 return (h,) + tuple(output[1:]) if is_tuple else h
             return None
@@ -148,7 +168,10 @@ def record(cfg: dict, run_dir: Path, model=None, tok=None, lens=None) -> Path:
 
         jrec = Recorder(reader, lens.source_layers if js.get("layers", "all") == "all" else reader.band)
         log(f"J-space enregistré sur les couches {jrec.layers[0]}..{jrec.layers[-1]} ({len(jrec.layers)})")
-    hooks = Hooks(reader.lm.layers, set(reader.band) | set(jrec.layers if jrec else []), drugs, reader)
+    subtract = cfg["readout"].get("subtract_injection", True)
+    hooks = Hooks(reader.lm.layers, set(reader.band) | set(jrec.layers if jrec else []), drugs, reader, subtract)
+    if drugs:
+        log("lecture " + ("sans l'injection cumulée (readout.subtract_injection)" if subtract else "brute : la lentille relit aussi l'injection"))
 
     input_ids, phrase = build_prompt(tok, cfg)
     input_ids = input_ids.to(model.device)
@@ -176,10 +199,9 @@ def record(cfg: dict, run_dir: Path, model=None, tok=None, lens=None) -> Path:
                 break
             out_ids.append(nxt)
             hooks.set_step(step)
-            hooks.captured = {}
             out = model(input_ids=torch.tensor([[nxt]], device=model.device), past_key_values=cache, use_cache=True)
             logits = out.logits[0, -1]
-            H = torch.stack([hooks.captured[l] for l in reader.band])
+            H = torch.stack([hooks.read(l) for l in reader.band])
             words, ent = reader.read(H)
             rec = {
                 "step": step,
@@ -192,7 +214,7 @@ def record(cfg: dict, run_dir: Path, model=None, tok=None, lens=None) -> Path:
             }
             trace_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             if jrec:
-                jrec.add(hooks.captured, nxt, rec["text"], hooks.alphas)
+                jrec.add(hooks, nxt, rec["text"], hooks.alphas)
             if step % 50 == 0:
                 top = [w for w, _ in words[len(words) // 2][:5]]
                 log(f"pas {step} : {top}")
@@ -203,7 +225,8 @@ def record(cfg: dict, run_dir: Path, model=None, tok=None, lens=None) -> Path:
     (run_dir / "text.txt").write_text(text, encoding="utf-8")
     log(f"{len(out_ids)} tokens générés")
     if jrec and out_ids:
-        d = jrec.save(run_dir / "jspace.pt", model=cfg["model"], lens=dict(cfg["lens"]), band=reader.band, phrase=phrase)
+        d = jrec.save(run_dir / "jspace.pt", model=cfg["model"], lens=dict(cfg["lens"]), band=reader.band, phrase=phrase,
+                      subtract_injection=bool(subtract and drugs))
         log(f"jspace.pt : h et jh {tuple(d['h'].shape)} en {d['dtype']}")
     log.done()
     winmod.build(run_dir, cfg)

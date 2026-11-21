@@ -20,6 +20,9 @@ readout:
   stopwords_extra: []
   # h et J @ h de chaque token dans runs/<id>/jspace.pt (introspect/jspace.py) ; layers: all (lentille entière) ou band
   save_jspace: {enabled: false, layers: all}
+  # retirer de la lecture la drogue injectée aux couches précédentes (elle reste dans le flux résiduel et la lentille
+  # la relirait) : on lit la réaction du modèle, pas la poussée. false = lecture brute (runs d'avant le 21/11)
+  subtract_injection: true
 windows: {size: 24, stride: 8, top_m: 12, decay: 0.0}
 drugs: []
 #  - {word: ocean, alpha: 0.002, band: [0.45, 0.70], profile: ramp, start: 100, end: 400, period: 40, on_prompt: false}

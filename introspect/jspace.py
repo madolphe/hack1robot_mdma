@@ -1,8 +1,10 @@
 """J-space d'un run, pour l'analyse : résidus h et vecteurs J @ h, par token généré et par couche de la lentille.
 
 Écrit par record quand readout.save_jspace.enabled est vrai, dans runs/<id>/jspace.pt (torch.load) :
-    h         [T, L, d]  sortie de bloc à la position du token généré, après l'injection de la drogue
-    jh        [T, L, d]  J[l] @ h : l'espace où lit la lentille (logits = unembed(jh), unembed = norme finale + lm_head)
+    h         [T, L, d]  sortie de bloc à la position du token généré, après l'injection de la drogue (ce que voit le modèle)
+    inj       [T, L, d]  avec une drogue seulement : somme de ce qui a été injecté jusqu'à la couche l (0 en dessous)
+    jh        [T, L, d]  ce que lit la lentille, J[l] @ (h − inj) si subtract_injection, sinon J[l] @ h
+                         (logits = unembed(jh), unembed = norme finale + lm_head)
     layers    [L]        couches enregistrées (`layers: all` = toutes celles de la lentille, `band` = bande lue)
     token_ids [T], text [T] (morceau décodé), alpha [T, n_drogues]
     model, lens {repo, file}, band, phrase, dtype ; h et jh en fp16 (fp32 si une valeur dépasse 60 000)
@@ -23,12 +25,18 @@ class Recorder:
     def __init__(self, reader, layers):
         self.layers = list(layers)
         self.J = torch.stack([reader.lens.jacobians[l] for l in self.layers]).to(reader.device, torch.float32)  # [L,d,d]
-        self.h, self.jh, self.token_ids, self.text, self.alpha = [], [], [], [], []
+        self.h, self.inj, self.jh, self.token_ids, self.text, self.alpha = [], [], [], [], [], []
 
-    def add(self, captured: dict, token_id: int, text: str, alphas: list[float]):
-        H = torch.stack([captured[l] for l in self.layers]).float()  # [L,d]
+    def add(self, hooks, token_id: int, text: str, alphas: list[float]):
+        """hooks : record.Hooks après le passage du token (captured, injected, read)."""
+        H = torch.stack([hooks.captured[l] for l in self.layers]).float()  # [L,d]
+        R = torch.stack([hooks.read(l) for l in self.layers])  # ce que lit la lentille
         self.h.append(H.cpu())
-        self.jh.append(torch.einsum("lij,lj->li", self.J, H).cpu())
+        if hooks.drugs:
+            zero = torch.zeros_like(H[0])
+            self.inj.append(torch.stack([hooks.injected.get(l) if hooks.injected.get(l) is not None else zero
+                                         for l in self.layers]).cpu())
+        self.jh.append(torch.einsum("lij,lj->li", self.J, R).cpu())
         self.token_ids.append(token_id); self.text.append(text); self.alpha.append(alphas)
 
     def save(self, path: Path, **meta) -> dict:
@@ -36,6 +44,8 @@ class Recorder:
         dt = torch.float16 if max(float(h.abs().max()), float(jh.abs().max())) < 6e4 else torch.float32
         data = {"h": h.to(dt), "jh": jh.to(dt), "layers": self.layers, "token_ids": self.token_ids, "text": self.text,
                 "alpha": self.alpha, "dtype": str(dt), **meta}
+        if self.inj:
+            data["inj"] = torch.stack(self.inj).to(dt)
         torch.save(data, path)
         return data
 
@@ -62,10 +72,11 @@ def check(run_dir: Path, data: dict, steps: int = 20):
             same += [x for x, _ in w[:5]] == [x for x, _ in trace[t]["layers"][str(l)][:5]]
             total += 1
     print(f"top-5 de la trace retrouvés depuis jh : {same}/{total} (couche × pas)")
-    # et J @ h recalculé depuis h
+    # et jh recalculé depuis h (moins l'injection si la lecture la retire)
     J = torch.stack([reader.lens.jacobians[l] for l in data["layers"]]).float()
-    err = (torch.einsum("lij,tlj->tli", J, data["h"].float()) - data["jh"].float()).norm() / data["jh"].float().norm()
-    print(f"écart relatif entre jh et J @ h recalculé : {float(err):.2e}")
+    read = data["h"].float() - (data["inj"].float() if data.get("subtract_injection") else 0)
+    err = (torch.einsum("lij,tlj->tli", J, read) - data["jh"].float()).norm() / data["jh"].float().norm()
+    print(f"écart relatif entre jh et J @ {'(h − inj)' if data.get('subtract_injection') else 'h'} recalculé : {float(err):.2e}")
 
 
 def main(argv=None):
