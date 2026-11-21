@@ -4,6 +4,8 @@ Ce projet artistique produit une vidéo des « pensées » d'un modèle de langa
 
 Pour aller plus loin : `SPEC.md` et `SPEC_V2.md` (cahiers des charges), `DECISIONS.md` (journal des choix), `MORNING_REPORT.md` (prompt système, mécanisme de la drogue, calibration, mesures) et `PROGRESS.md`.
 
+Les identités synthétiques et les sources des cinq substances principales sont regroupées dans [`PROFILS_SUBSTANCES.md`](PROFILS_SUBSTANCES.md).
+
 ---
 
 ## 1. Modèles utilisés
