@@ -1,8 +1,11 @@
-"""Chargement de Gemma 3 + J-lens, lecture J-lens en fp32 et directions de drogue."""
+"""Chargement du LLM + J-lens, lecture J-lens en fp32 et directions de drogue.
+
+Testé avec Gemma 3 12B-it (tokenizer SentencePiece) et Qwen3.5-4B (BPE au niveau des octets)."""
 from __future__ import annotations
 
 import math
 import unicodedata
+from pathlib import Path
 
 import torch
 
@@ -10,20 +13,57 @@ from . import common  # noqa: F401  (fixe HF_HUB_CACHE)
 from .stopwords import ALL as STOPWORDS
 
 
+def model_source(cfg: dict) -> str:
+    """Copie locale (`model_path`) si elle existe, sinon l'identifiant Hugging Face (`model`)."""
+    p = cfg.get("model_path")
+    return p if p and Path(p).is_dir() else cfg["model"]
+
+
 def load_model(cfg: dict, device: str = "cuda"):
     import transformers
 
-    name = cfg["model"]
+    name = model_source(cfg)
     tok = transformers.AutoTokenizer.from_pretrained(name)
-    # Gemma 3 12B-it est un checkpoint multimodal ; on charge la classe complète
-    # (jamais trust_remote_code) et jlens trouve le décodeur texte.
-    try:
-        from transformers import Gemma3ForConditionalGeneration as Cls
-    except ImportError:  # pragma: no cover
-        Cls = transformers.AutoModelForCausalLM
+    # Gemma 3 et Qwen3.5 sont des checkpoints multimodaux : on charge la classe déclarée par le
+    # checkpoint (jamais trust_remote_code) et jlens trouve le décodeur texte.
+    arch = (transformers.AutoConfig.from_pretrained(name).architectures or [""])[0]
+    Cls = getattr(transformers, arch, None) or transformers.AutoModelForCausalLM
     model = Cls.from_pretrained(name, dtype=torch.bfloat16, device_map=device)
     model.eval()
     return model, tok
+
+
+def stop_token_ids(model, tok) -> set[int]:
+    """Tokens de fin de tour : eos du tokenizer et de la config de génération, plus les marqueurs connus."""
+    ids = {tok.eos_token_id}
+    eos = getattr(getattr(model, "generation_config", None), "eos_token_id", None)
+    ids |= set(eos) if isinstance(eos, (list, tuple)) else {eos}
+    for t in ("<end_of_turn>", "<|im_end|>", "<|endoftext|>"):
+        tid = tok.convert_tokens_to_ids(t)
+        if isinstance(tid, int) and tid != tok.unk_token_id:
+            ids.add(tid)
+    return {i for i in ids if i is not None}
+
+
+def word_starts(tok, n: int) -> dict[int, str]:
+    """Tokens qui commencent un mot (préfixe « ▁ » en SentencePiece, espace en BPE) -> texte du mot."""
+    pieces = tok.convert_ids_to_tokens(list(range(n)))
+    if sum(1 for p in pieces[:20000] if p and p.startswith("▁")) > 1000:
+        return {i: p[1:] for i, p in enumerate(pieces) if p and p.startswith("▁")}
+    texts = tok.batch_decode([[i] for i in range(n)])  # BPE octets : « Ġ » et accents décodés
+    return {i: t[1:] for i, t in enumerate(texts) if t.startswith(" ") and not t.startswith("  ")}
+
+
+def single_token_id(tok, word: str) -> int | None:
+    """Id du token « ␣mot » s'il existe en un seul morceau, en essayant aussi la minuscule et la capitale."""
+    for w in (word, word.lower(), word.capitalize()):
+        tid = tok.convert_tokens_to_ids("▁" + w)  # SentencePiece
+        if isinstance(tid, int) and tid != tok.unk_token_id:
+            return tid
+        ids = tok.encode(" " + w, add_special_tokens=False)  # BPE
+        if len(ids) == 1:
+            return ids[0]
+    return None
 
 
 def load_lens(cfg: dict):
@@ -64,11 +104,7 @@ class Reader:
         V = self.W_U.shape[0]
         mask = torch.zeros(V, dtype=torch.bool)
         self.word_of = {}
-        pieces = self.tok.convert_ids_to_tokens(list(range(min(V, len(self.tok)))))
-        for i, p in enumerate(pieces):
-            if not p or not p.startswith("▁"):
-                continue
-            w = p[1:]
+        for i, w in word_starts(self.tok, min(V, len(self.tok))).items():
             if len(w) < min_len or not all(unicodedata.category(c).startswith("L") for c in w):
                 continue
             lw = w.lower()
@@ -90,8 +126,12 @@ class Reader:
     def read(self, H: torch.Tensor):
         """H : [L_band, d] résidus (une position). Renvoie par couche la liste
         [(mot, prob)] filtrée et l'entropie de la lecture."""
-        T = torch.einsum("lij,lj->li", self.J, H.float())  # J @ h
-        probs = torch.softmax(self.unembed(T), dim=-1)  # [L,V]
+        return self.read_jspace(torch.einsum("lij,lj->li", self.J, H.float()))  # J @ h
+
+    @torch.no_grad()
+    def read_jspace(self, T: torch.Tensor):
+        """Comme read, à partir des vecteurs J @ h déjà calculés : T [L, d] (par ex. lus dans jspace.pt)."""
+        probs = torch.softmax(self.unembed(T.to(self.W_U.device)), dim=-1)  # [L,V]
         ent = -(probs * torch.log(probs.clamp_min(1e-12))).sum(-1)
         if self.cfg["readout"].get("filter_before_topk"):
             p = probs.masked_fill(~self.word_mask, 0.0)
@@ -100,7 +140,7 @@ class Reader:
         val, idx = p.topk(self.top_k, dim=-1)
         val, idx = val.cpu().tolist(), idx.cpu().tolist()
         out = []
-        for li in range(len(self.band)):
+        for li in range(len(val)):
             agg: dict[str, float] = {}
             for v, i in zip(val[li], idx[li]):
                 w = self.word_of.get(i)
@@ -110,10 +150,12 @@ class Reader:
         return out, ent.cpu().tolist()
 
     # --- drogue ----------------------------------------------------------
+    @torch.no_grad()
     def gain(self) -> torch.Tensor:
-        w = self.norm.weight.detach().float()
-        # Gemma3RMSNorm multiplie par (1 + weight)
-        return 1.0 + w
+        # gain effectif de la norme finale : une RMSNorm envoie le vecteur de uns sur son gain
+        # (1 + weight pour Gemma 3 et Qwen3.5, weight pour Llama)
+        ones = torch.ones(1, self.d_model, device=self.W_U.device, dtype=self.norm.weight.dtype)
+        return self.norm(ones)[0].float()
 
     def direction(self, word: str, layer: int, log=print) -> torch.Tensor:
         ids = self.word_token_ids(word, log)
@@ -127,10 +169,9 @@ class Reader:
         return v / v.norm()
 
     def word_token_ids(self, word: str, log=print) -> list[int]:
-        for cand in ("▁" + word, "▁" + word.lower(), "▁" + word.capitalize()):
-            tid = self.tok.convert_tokens_to_ids(cand)
-            if isinstance(tid, int) and tid != self.tok.unk_token_id:
-                return [tid]
+        tid = single_token_id(self.tok, word)
+        if tid is not None:
+            return [tid]
         ids = self.tok.encode(" " + word, add_special_tokens=False)
         log(f"ATTENTION : le mot-drogue '{word}' fait {len(ids)} tokens {self.tok.convert_ids_to_tokens(ids)} ; moyenne des directions")
         return ids

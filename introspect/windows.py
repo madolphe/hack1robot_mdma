@@ -26,7 +26,8 @@ def step_scores(trace: list[dict], cfg: dict) -> list[dict[str, float]]:
             for w, p in rec["layers"][l]:
                 sc[w] = sc.get(w, 0.0) + w_l * p
         if ee.get("enabled", True):
-            recent = "".join(t["token"] for t in trace[max(0, i - n_echo + 1): i + 1]).replace("▁", " ").lower()
+            # "text" : morceau décodé (tout tokenizer) ; "token" seul dans les traces v1 (SentencePiece)
+            recent = "".join(t.get("text", t["token"].replace("▁", " ")) for t in trace[max(0, i - n_echo + 1): i + 1]).lower()
             recent_words = set(recent.split())
             sc = {w: s for w, s in sc.items() if w not in recent_words}
         out.append(sc)

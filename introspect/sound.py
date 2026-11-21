@@ -206,17 +206,52 @@ def synth_window(words: list, feats: dict, tf: dict, dur: float, sr: int, rng: n
     return out / max(1e-6, float(np.abs(out).max())) * 0.8
 
 
+def stable_audio_3(la: dict, clips: list[dict], workdir: Path, log) -> tuple[list[np.ndarray], int]:
+    """Clips Stable Audio 3 (`clips` : prompt, duration, seed) générés par introspect/sa3_clips.py dans son
+    propre environnement (`layer_a.python`, par défaut .venv-audio : la bibliothèque exige torch 2.7.1)."""
+    import subprocess
+
+    from .common import ROOT
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    for i, c in enumerate(clips):
+        c["out"] = str(workdir / f"sa3_{i:04d}.wav")
+    jobs = workdir / "sa3_jobs.json"
+    jobs.write_text(json.dumps({"model": la["model"], "steps": la.get("steps", 8), "cfg_scale": la.get("cfg_scale", 1.0),
+                                "clips": clips}, ensure_ascii=False, indent=1), encoding="utf-8")
+    py = ROOT / la.get("python", ".venv-audio/bin/python")
+    r = subprocess.run([str(py), "-I", str(ROOT / "introspect" / "sa3_clips.py"), str(jobs)],
+                       capture_output=True, text=True)
+    for line in r.stdout.splitlines():
+        log("stable audio 3 :", line)
+    if r.returncode != 0:
+        raise RuntimeError(f"sa3_clips.py (code {r.returncode}) : {r.stderr.strip().splitlines()[-1:]}")
+    out = [sf.read(c["out"], dtype="float32") for c in clips]
+    return [a for a, _ in out], out[0][1]
+
+
 def sono(run_dir: Path, cfg: dict, wins, feats, tfeats, durs, log):
     sc = cfg["sound"]["sono"]
     c = cfg["video"]["crossfade_s"]
     la = sc["layer_a"]
     clips_a = {}
-    if la.get("enabled"):
+    if la.get("enabled") and la.get("engine") == "stable_audio_3":
+        try:
+            jobs = [{"prompt": ", ".join(x for x, _ in w["words"][:6]) + ", " + la["suffix"],
+                     "duration": round(min(47.0, durs[k] + c + 0.5), 2), "seed": 1000 + k} for k, w in enumerate(wins)]
+            clips, sr_a = stable_audio_3(la, jobs, run_dir / "audio" / "sa3", log)
+            clips_a = {k: (a if sr_a == SR else to_sr(a, sr_a)) for k, a in enumerate(clips)}
+        except Exception as e:
+            log("couche A désactivée :", repr(e))
+            clips_a = {}
+    elif la.get("enabled"):
         try:
             import torch
             from diffusers import StableAudioPipeline
 
-            pipe = StableAudioPipeline.from_pretrained(la["model"], torch_dtype=torch.float16).to("cuda")
+            from .common import cached_snapshot
+
+            pipe = StableAudioPipeline.from_pretrained(cached_snapshot(la["model"]), torch_dtype=torch.float16).to("cuda")
             pipe.set_progress_bar_config(disable=True)
             for k, w in enumerate(wins):
                 words = [x for x, _ in w["words"][:6]]
@@ -258,7 +293,7 @@ def sound(run_dir: Path, cfg: dict | None = None, mode: str | None = None):
     log = Log(run_dir, "sound")
     wins = json.loads((run_dir / "windows.json").read_text(encoding="utf-8"))
     feats = F.load_or_compute(run_dir, wins, cfg)
-    tfeats = F.trace_features(run_dir, wins)
+    tfeats = F.trace_features(run_dir, wins, cfg)
     log(f"traits : {len(feats)} mots")
     if cfg["sound"]["voice_fx"].get("enabled"):
         durs = voice_fx(run_dir, cfg, wins, feats, tfeats, log)

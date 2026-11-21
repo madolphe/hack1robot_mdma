@@ -1,0 +1,5 @@
+# Même chose que small.yaml, lue avec la J-lens classique (Neuronpedia) au lieu de la J++ lens
+base: configs/small.yaml
+run_tag: small-jlens
+lens:
+  file: qwen3.5-4b/jlens/Salesforce-wikitext/Qwen3.5-4B_jacobian_lens.pt

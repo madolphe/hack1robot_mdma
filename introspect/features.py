@@ -96,7 +96,7 @@ def compute(words: list[str], cfg: dict) -> dict[str, dict]:
     return out
 
 
-def trace_features(run_dir: Path, wins: list[dict]) -> dict[int, dict[str, dict]]:
+def trace_features(run_dir: Path, wins: list[dict], cfg: dict | None = None) -> dict[int, dict[str, dict]]:
     """Traits issus de la trace, par tranche et par mot : couche d'origine moyenne,
     score J-lens, nouveauté, entropie moyenne, drogue."""
     from .windows import load_trace
@@ -106,6 +106,7 @@ def trace_features(run_dir: Path, wins: list[dict]) -> dict[int, dict[str, dict]
         return {}
     layers = sorted(trace[0]["layers"], key=int)
     lo, hi = int(layers[0]), int(layers[-1])
+    full = 0.004 * ((cfg or {}).get("drug") or {}).get("alpha_scale", 1.0)  # α du niveau 4 = drogue pleine
     out = {}
     for w in wins:
         recs = trace[w["start"]: w["end"]]
@@ -121,7 +122,7 @@ def trace_features(run_dir: Path, wins: list[dict]) -> dict[int, dict[str, dict]
                             num += int(l) * p; den += p
             layer = (num / den) if den else (lo + hi) / 2
             per[word] = {"layer": round((layer - lo) / max(1, hi - lo), 4), "score": weight,
-                         "novelty": 1.0 if word in w["new"] else 0.0, "entropy": round(ent, 3), "drug": round(min(1.0, drug / 0.004), 3)}
+                         "novelty": 1.0 if word in w["new"] else 0.0, "entropy": round(ent, 3), "drug": round(min(1.0, drug / full), 3)}
         out[w["index"]] = per
     return out
 

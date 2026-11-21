@@ -1,0 +1,28 @@
+# Petits modèles pour un GPU de 16 Go (testé sur RTX 4090 Laptop) : hérite de default.yaml.
+# Poids : ./run.sh script scripts/download_weights_small.sh
+run_tag: small
+model: Qwen/Qwen3.5-4B            # 32 couches, d_model 2560, ~9 Go en bf16
+model_path: /home/flowers/work/hf/Qwen3.5-4B   # copie locale, utilisée si le dossier existe
+lens:
+  repo: neuronpedia/jacobian-lens
+  # J++ lens (Ayonrinde & Lindsey, 2026) : couches 0 à 30, cible la couche 31 ;
+  # la J-lens classique est à côté : qwen3.5-4b/jlens/Salesforce-wikitext/Qwen3.5-4B_jacobian_lens.pt
+  file: qwen3.5-4b/jpp/Salesforce-wikitext/Qwen3.5-4B_jpp_lens.pt
+input:
+  chat_template_kwargs: {enable_thinking: false}   # sinon Qwen3.5 ouvre un bloc <think> avant de disserter
+readout:
+  save_jspace: {enabled: true, layers: all}         # jspace.pt : ~64 Mo pour 200 tokens (h et J @ h, 31 couches)
+drug:
+  # niveaux du catalogue ×15 : « ocean » seul affleure à α 0,016, domine à 0,05-0,08 et défait le texte vers 0,12
+  # (Gemma 3 12B : 0,002 et 0,004), voir runs/small-sweep-a*
+  alpha_scale: 15
+image:
+  model: Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers   # ~9 Go en bf16
+  steps: 2
+  guidance_scale: 4.5
+sound:
+  sono:
+    # Stable Audio 3 small-sfx (licence à accepter sur HF, ~3,5 Go, 8 étapes), dans son propre environnement
+    # .venv-audio (torch 2.7.1) ; sans lui, la couche A se désactive et la couche B (synthèse) reste.
+    # Stable Audio Open 1.0 (diffusers, 100 étapes) : {engine: diffusers, model: stabilityai/stable-audio-open-1.0, steps: 100}
+    layer_a: {enabled: true, engine: stable_audio_3, model: small-sfx, steps: 8}

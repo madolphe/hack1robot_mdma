@@ -1,0 +1,6 @@
+# Calibration de la drogue « ocean » sur Qwen3.5-4B (prise de 200 tokens) :
+# ./run.sh py sweep --config configs/variants/small_drug_ocean.yaml --alphas 0.002 0.004 0.008 0.016 --prefix small-sweep
+base: configs/small.yaml
+run_tag: small-ocean
+drugs:
+  - {word: ocean, alpha: 0.004, band: [0.45, 0.70], profile: ramp, start: 20, end: 120}

@@ -1,4 +1,5 @@
 .venv/
+.venv-audio/
 .uv-cache/
 .uv-python/
 runs/

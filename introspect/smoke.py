@@ -7,7 +7,7 @@ import time
 import numpy as np
 import torch
 
-from .common import ROOT
+from .common import ROOT, load_config
 
 OUT = ROOT / "runs" / "setup" / "smoke"
 
@@ -16,28 +16,29 @@ def t(msg, t0):
     print(f"{msg} : {time.time() - t0:.1f} s", flush=True)
 
 
-def image():
-    from diffusers import ZImageImg2ImgPipeline, ZImagePipeline
+def image(cfg):
+    from .render import backend_of, load_pipes
+    from .windows import make_prompt
 
+    ic = cfg["image"]
+    tag = backend_of(ic)
     t0 = time.time()
-    pipe = ZImagePipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", torch_dtype=torch.bfloat16).to("cuda")
-    t("chargement Z-Image", t0)
-    prompt = "silence, voice, whisper, language, echo, music, emptiness, peinture onirique, lumière diffuse"
+    t2i, i2i = load_pipes(cfg)
+    t(f"chargement {ic['model']}", t0)
+    prompt = make_prompt(["silence", "voice", "whisper", "language", "echo", "emptiness"], cfg)
     t0 = time.time()
-    img = pipe(prompt=prompt, height=768, width=1344, num_inference_steps=8, guidance_scale=0.0,
-               generator=torch.Generator("cuda").manual_seed(1)).images[0]
-    t("text-to-image 1344x768, 8 étapes", t0)
-    img.save(OUT / "image_t2i.png")
-    i2i = ZImageImg2ImgPipeline(**pipe.components)
+    img = t2i(prompt, torch.Generator("cuda").manual_seed(1))
+    t(f"text-to-image {ic['size'][0]}x{ic['size'][1]}, {ic['steps']} étapes", t0)
+    img.save(OUT / f"image_t2i_{tag}.png")
     t0 = time.time()
-    img2 = i2i(prompt="ocean, waves, depth, salt, " + prompt, image=img, strength=0.55, height=768, width=1344,
-               num_inference_steps=8, guidance_scale=0.0, generator=torch.Generator("cuda").manual_seed(1)).images[0]
-    t("img2img strength 0.55", t0)
-    img2.save(OUT / "image_i2i.png")
+    img2 = i2i(make_prompt(["ocean", "waves", "depth", "salt", "silence", "echo"], cfg), img, ic["strength"],
+               torch.Generator("cuda").manual_seed(1))
+    t(f"img2img strength {ic['strength']}", t0)
+    img2.save(OUT / f"image_i2i_{tag}.png")
     print("VRAM max", round(torch.cuda.max_memory_allocated() / 2**30, 1), "Gio")
 
 
-def voice():
+def voice(cfg):
     import soundfile as sf
     from kokoro import KPipeline
     from pedalboard import Chorus, Delay, Pedalboard, PitchShift, Reverb
@@ -57,12 +58,26 @@ def voice():
     print("durée", round(len(wav) / 24000, 2), "s")
 
 
-def audio():
+def audio(cfg):
     import soundfile as sf
+
+    la = cfg["sound"]["sono"]["layer_a"]
+    if la.get("engine") == "stable_audio_3":
+        from .sound import stable_audio_3
+
+        t0 = time.time()
+        clips, sr = stable_audio_3(la, [{"prompt": "silence, echo, whisper, " + la["suffix"], "duration": 10.0, "seed": 1}],
+                                   OUT, lambda *m: print(*m, flush=True))
+        t(f"Stable Audio 3 {la['model']}, chargement compris", t0)
+        sf.write(OUT / "sono_clip_sa3.wav", clips[0], sr)
+        return
     from diffusers import StableAudioPipeline
 
     t0 = time.time()
-    pipe = StableAudioPipeline.from_pretrained("stabilityai/stable-audio-open-1.0", torch_dtype=torch.float16).to("cuda")
+    from .common import cached_snapshot
+
+    pipe = StableAudioPipeline.from_pretrained(cached_snapshot(cfg["sound"]["sono"]["layer_a"]["model"]),
+                                               torch_dtype=torch.float16).to("cuda")
     t("chargement Stable Audio", t0)
     t0 = time.time()
     a = pipe("silence, echo, whisper, ambient texture, drone, field recording", negative_prompt="low quality",
@@ -72,11 +87,18 @@ def audio():
 
 
 def main():
+    """./run.sh smoke [image|voice|audio …] [--config c.yaml]"""
     OUT.mkdir(parents=True, exist_ok=True)
-    which = sys.argv[1:] or ["image", "voice", "audio"]
-    for w in which:
+    args = sys.argv[1:]
+    config = ROOT / "configs" / "default.yaml"
+    if "--config" in args:
+        i = args.index("--config")
+        config = args[i + 1]
+        del args[i:i + 2]
+    cfg = load_config(config)
+    for w in args or ["image", "voice", "audio"]:
         print(f"=== {w}", flush=True)
-        globals()[w]()
+        globals()[w](cfg)
         torch.cuda.empty_cache()
 
 

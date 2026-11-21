@@ -1,0 +1,14 @@
+# Images FLUX.2 [klein] 4B au lieu de SANA-Sprint (~13 s par image avec déchargement CPU, contre ~1 s).
+base: configs/small.yaml
+run_tag: small-flux2
+image:
+  model: black-forest-labs/FLUX.2-klein-4B
+  steps: 4
+  guidance_scale: 1.0
+  cpu_offload: true               # transformer 7,8 Go + encodeur de texte 8 Go : ne tient pas d'un bloc sur 16 Go
+  # Avec l'image précédente en référence, FLUX.2 [klein] la recopie presque telle quelle quand les mots sont
+  # abstraits (5 à 10/255 d'écart entre tranches, contre ~43 pour SANA-Sprint) : la vidéo se fige. On repart
+  # donc d'un text-to-image à chaque tranche ; les fondus font les transitions. reset_every: 8 pour l'essayer.
+  reset_every: 1
+  # sans « no text, no letters », FLUX écrit les mots du prompt en lettres (« QURESTDION »)
+  style: "Diffuse light, soft haze, rich colors, painterly brushstrokes, no text, no letters"

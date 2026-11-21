@@ -145,3 +145,58 @@ vendor/                jacobian-lens (à cloner, non inclus)
 weights/               poids et lexiques (non inclus)
 runs/                  sorties (non incluses)
 ```
+
+---
+
+## 7. Petits modèles (GPU de 16 Go)
+
+`configs/small.yaml` fait tourner toute la chaîne sur un GPU de 16 Go (testé sur RTX 4090 Laptop, torch 2.14 cu130) :
+
+| Rôle | Grand modèle (défaut) | Petit modèle (`small.yaml`) |
+| --- | --- | --- |
+| LLM | Gemma 3 12B-it, 48 couches | `Qwen/Qwen3.5-4B`, 32 couches, ~9 Go |
+| Lentille | J-lens Neuronpedia | **J++ lens** (Ayonrinde & Lindsey, 2026), `qwen3.5-4b/jpp/...` chez Neuronpedia |
+| Images | Z-Image-Turbo, 8 étapes | SANA-Sprint 1.6B, 2 étapes (~1 s par image) ; FLUX.2 [klein] 4B en variante |
+| Sonorisation A | Stable Audio Open 1.0, 100 étapes | **Stable Audio 3 small-sfx**, 8 étapes (~0,2 s par clip, 2 Go de VRAM), dans son propre environnement `.venv-audio` ; sans ses poids, seule la couche B (synthèse) reste |
+
+```bash
+# environnement audio à part : la bibliothèque stable-audio-3 (pas sur PyPI) exige torch 2.7.1
+git clone https://github.com/Stability-AI/stable-audio-3 vendor/stable-audio-3
+git -C vendor/stable-audio-3 checkout 790793b
+uv venv --python 3.12 .venv-audio
+uv pip install --python .venv-audio/bin/python --torch-backend=cu126 torch==2.7.1 torchaudio==2.7.1 -e vendor/stable-audio-3
+
+./run.sh script scripts/download_weights_small.sh     # ~25 Go (+16 Go pour FLUX.2 [klein])
+./run.sh test configs/small.yaml                      # tests CPU (tokenizer, drogue, tranches)
+./run.sh smoke image audio --config configs/small.yaml
+./run.sh validate configs/small.yaml                  # lecture J++ contre lens.apply
+./run.sh all --config configs/variants/small_lsd.yaml --modes voix mixte
+./run.sh all --config configs/variants/img_flux2_klein.yaml
+```
+
+Une vidéo d'une minute prend environ **2 min** (record 20 s, images 30 s, voix 10 s, son 27 s dont 4 s pour les 20 clips Stable Audio 3, montage 25 s par mode). Avec Stable Audio Open 1.0 (`layer_a: {engine: diffusers, model: stabilityai/stable-audio-open-1.0, steps: 100}`), ses clips prennent 4 min à eux seuls. Sur A6000 avec les grands modèles : ~7 min.
+
+Ce qui change dans le code :
+
+- **Tokenizer** : Qwen est en BPE au niveau des octets (`Ġmot`), Gemma en SentencePiece (`▁mot`). `lensmodel.word_starts` et `single_token_id` gèrent les deux ; la trace garde le texte décodé de chaque token (`text`) pour le filtre des échos.
+- **Gabarit** : `input.chat_template_kwargs: {enable_thinking: false}`, sinon Qwen3.5 ouvre un bloc `<think>`.
+- **Cache** : Qwen3.5 mêle attention et couches linéaires à état ; le modèle crée lui-même son cache.
+- **Images** : `image.backend` (`zimage`, `sana_sprint`, `flux2_klein`, déduit du nom du modèle). FLUX.2 [klein] ne rebruite pas l'image précédente : il la reçoit en référence, avec une consigne d'édition (`image.edit_prefix`). Mais avec des mots abstraits il la recopie presque telle quelle et la vidéo se fige ; sa variante repart donc d'un text-to-image à chaque tranche (`reset_every: 1`, ~13 s par image avec `image.cpu_offload`, qui le fait tenir sur 16 Go). Sans « no text, no letters » dans le style, il écrit les mots en lettres.
+- **Drogue** : Qwen demande des α environ **15 fois** plus grands que Gemma (`drug.alpha_scale: 15`). « ocean » seul affleure à 0,016, domine à 0,05–0,08 en restant cohérent et défait le texte vers 0,12 (runs `small-sweep-a*`). La norme du résidu de Gemma est gonflée par ses activations massives, d'où ses α minuscules.
+- `model_path` : copie locale du LLM, utilisée si le dossier existe.
+- **Lentille** : sur le même texte, J++ et la J-lens classique partagent environ la moitié des mots par tranche. J++ donne plus de noms concrets (*vocal, speech, sound*), la J-lens plus d'adverbes (*arguably, profoundly*) : `configs/variants/small_jlens.yaml` pour comparer. La direction de la drogue passe par la lentille, donc la calibration ×15 vaut pour J++.
+
+**J-space pour l'analyse** (`readout.save_jspace`, actif dans `small.yaml`, coupé par défaut) : `record` écrit `runs/<id>/jspace.pt`, avec pour chaque token généré et chaque couche de la lentille (0 à 30) la sortie de bloc `h` (après la drogue) et `jh = J[l] @ h`, en fp16 (~64 Mo pour 200 tokens), plus les tokens, l'α de la drogue et la lentille utilisée. La génération ne change pas : la trace est identique à l'octet près avec ou sans. Format et vérification : `introspect/jspace.py`.
+
+```python
+from introspect.jspace import load
+d = load("runs/small-lsd-sa3")          # d["h"], d["jh"] : [tokens, couches, 2560] ; d["layers"], d["text"], d["alpha"]
+```
+
+```bash
+./run.sh py jspace runs/small-lsd-sa3 --check   # unembed(jh) redonne la trace (337/340 top-5, écarts dus au fp16)
+```
+
+Runs enregistrés : `small-lsd-sa3` (LSD, la vidéo) et son témoin sobre `small-sober-jspace` (même question, même graine, `configs/variants/small_sober.yaml`) ; les deux textes divergent après 16 tokens. La norme moyenne de `h` sur Qwen3.5-4B monte de 2 (couche 0) à 59 (couche 30), sans activations géantes : c'est pourquoi sa drogue demande des α plus grands que Gemma.
+
+Limites constatées : les mots intérieurs traduisent souvent en anglais ce que le texte français vient de dire (le filtre des échos ne compare que les mots identiques) ; le BPE de Qwen laisse passer quelques fragments (*philosoph*, *empt*) ; une image SANA sur 20 sort avec des bandes noires.

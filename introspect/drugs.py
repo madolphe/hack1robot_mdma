@@ -1,6 +1,6 @@
 """Drogues v2 : catalogue de phases, intensité lissée, tirages de mots reproductibles.
 
-python -m introspect.drugs --check   -> runs/setup/drug_tokens.json (contrôle de tokenisation)"""
+python -m introspect.drugs --check [config]   -> runs/setup/drug_tokens_<modèle>.json (contrôle de tokenisation)"""
 from __future__ import annotations
 
 import functools
@@ -35,15 +35,17 @@ def names() -> list[str]:
 class Schedule:
     """α(t), phase et mots tirés à chaque pas pour une drogue du catalogue."""
 
-    def __init__(self, name: str, intensity: float, n_tokens: int, seed: int, tok=None, log=print):
+    def __init__(self, name: str, intensity: float, n_tokens: int, seed: int, tok=None, log=print,
+                 scale: float = 1.0):
         cat = catalog()
         if name not in cat["drugs"]:
             raise ValueError(f"drogue inconnue : {name}")
         self.name = name
         self.label = cat["drugs"][name]["label"]
         self.phases = cat["drugs"][name]["phases"]
-        self.levels = {int(k): float(v) for k, v in cat["levels"].items()}
-        self.cap = float(cat.get("alpha_cap", 0.006))
+        # `scale` adapte les niveaux, calibrés sur Gemma 3 12B, à un autre modèle (Qwen3.5-4B : ×15)
+        self.levels = {int(k): float(v) * scale for k, v in cat["levels"].items()}
+        self.cap = float(cat.get("alpha_cap", 0.006)) * scale
         self.every = int(cat.get("draw_every", 12))
         self.k = int(cat.get("draw_k", 3))
         self.trans = float(cat.get("transition", 0.05))
@@ -105,8 +107,9 @@ class Schedule:
 
 
 def is_single(tok, word: str) -> bool:
-    tid = tok.convert_tokens_to_ids("▁" + word)
-    return isinstance(tid, int) and tid != tok.unk_token_id
+    from .lensmodel import single_token_id
+
+    return single_token_id(tok, word) is not None
 
 
 class CatalogDrug:
@@ -152,11 +155,14 @@ class CatalogDrug:
                 "words": list(self.s.words)}
 
 
-def check():
+def check(config: str | None = None):
     from transformers import AutoTokenizer
 
-    from . import common  # noqa: F401
-    tok = AutoTokenizer.from_pretrained("google/gemma-3-12b-it")
+    from .common import load_config
+    from .lensmodel import model_source
+    cfg = load_config(config or ROOT / "configs" / "default.yaml")
+    model = cfg["model"]
+    tok = AutoTokenizer.from_pretrained(model_source(cfg))
     report = {}
     tot = {"kept": 0, "multi": 0}
     for name, d in catalog()["drugs"].items():
@@ -165,7 +171,7 @@ def check():
             multi = {w: tok.convert_ids_to_tokens(tok.encode(" " + w, add_special_tokens=False)) for w in p["words"] if w not in kept}
             report[f"{name}/{p['name']}"] = {"n": len(p["words"]), "kept": kept, "multi_token_dropped": multi}
             tot["kept"] += len(kept); tot["multi"] += len(multi)
-    out = ROOT / "runs" / "setup" / "drug_tokens.json"
+    out = ROOT / "runs" / "setup" / f"drug_tokens_{model.split('/')[-1]}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"total": tot, "phases": report}, ensure_ascii=False, indent=1), encoding="utf-8")
     print(tot)
@@ -176,5 +182,6 @@ def check():
 if __name__ == "__main__":
     import sys
 
-    if "--check" in sys.argv:
-        check()
+    if "--check" in sys.argv:  # python -m introspect.drugs --check [config.yaml]
+        rest = [a for a in sys.argv[1:] if a != "--check"]
+        check(rest[0] if rest else None)

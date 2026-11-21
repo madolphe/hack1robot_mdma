@@ -18,6 +18,8 @@ readout:
   layer_weights: null         # null = poids 1 ; sinon liste alignée sur les couches de la bande
   exclure_echos: {enabled: true, last_n_tokens: 32}
   stopwords_extra: []
+  # h et J @ h de chaque token dans runs/<id>/jspace.pt (introspect/jspace.py) ; layers: all (lentille entière) ou band
+  save_jspace: {enabled: false, layers: all}
 windows: {size: 24, stride: 8, top_m: 12, decay: 0.0}
 drugs: []
 #  - {word: ocean, alpha: 0.002, band: [0.45, 0.70], profile: ramp, start: 100, end: 400, period: 40, on_prompt: false}

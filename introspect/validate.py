@@ -50,7 +50,7 @@ def main():
     full = model(input_ids=input_ids).logits[0, -1].float()
     report["final_layer"]["hf_forward_top5"] = tok.convert_ids_to_tokens(full.topk(5).indices.tolist())
     report["summary"] = f"top-5 identiques sur {agree}/{len(lens.source_layers)} couches"
-    out = ROOT / "runs" / "setup" / "validate_lens.json"
+    out = ROOT / "runs" / "setup" / f"validate_lens_{cfg['model'].split('/')[-1]}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
     for l in lens.source_layers[:: max(1, len(lens.source_layers) // 8)]:

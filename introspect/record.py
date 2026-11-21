@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from .common import Log, load_config, new_run_dir
-from .lensmodel import Reader, drug_alpha, load_lens, load_model
+from .lensmodel import Reader, drug_alpha, load_lens, load_model, stop_token_ids
 from . import windows as winmod
 
 
@@ -22,7 +22,9 @@ def build_prompt(tok, cfg: dict) -> torch.Tensor:
     if cfg["input"].get("system"):
         msgs.append({"role": "system", "content": cfg["input"]["system"]})
     msgs.append({"role": "user", "content": phrase})
-    ids = tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt", return_dict=True)
+    # options du gabarit, par ex. {enable_thinking: false} pour que Qwen3.5 disserte sans bloc <think>
+    extra = cfg["input"].get("chat_template_kwargs") or {}
+    ids = tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt", return_dict=True, **extra)
     return ids["input_ids"], phrase
 
 
@@ -118,7 +120,7 @@ def prepare_drugs(cfg, reader: Reader, log, tok=None):
         from .drugs import CatalogDrug, Schedule
 
         sched = Schedule(dc["name"], dc.get("intensity", 1.0), cfg["generation"]["max_new_tokens"],
-                         cfg["generation"]["seed"], tok=tok, log=log)
+                         cfg["generation"]["seed"], tok=tok, log=log, scale=dc.get("alpha_scale", 1.0))
         cd = CatalogDrug(sched, reader, log)
         log(f"drogue catalogue '{sched.label}' ×{sched.intensity} sur {sched.T} tokens, couches {min(cd.layers)}..{max(cd.layers)} ; "
             + " | ".join(f"{p['name']} {p['start']:.2f}-{p['end']:.2f} niv.{p['level']}" for p in sched.phases))
@@ -139,23 +141,30 @@ def record(cfg: dict, run_dir: Path, model=None, tok=None, lens=None) -> Path:
     reader = Reader(model, tok, lens, cfg)
     log(f"{reader.n_layers} couches, bande lue : {reader.band[0]}..{reader.band[-1]} ({len(reader.band)} couches)")
     drugs = prepare_drugs(cfg, reader, log, tok)
-    hooks = Hooks(reader.lm.layers, reader.band, drugs, reader)
+    js = cfg["readout"].get("save_jspace") or {}
+    jrec = None
+    if js.get("enabled"):  # J-space pour l'analyse (introspect/jspace.py) : capture seule, la génération ne change pas
+        from .jspace import Recorder
+
+        jrec = Recorder(reader, lens.source_layers if js.get("layers", "all") == "all" else reader.band)
+        log(f"J-space enregistré sur les couches {jrec.layers[0]}..{jrec.layers[-1]} ({len(jrec.layers)})")
+    hooks = Hooks(reader.lm.layers, set(reader.band) | set(jrec.layers if jrec else []), drugs, reader)
 
     input_ids, phrase = build_prompt(tok, cfg)
     input_ids = input_ids.to(model.device)
     log("phrase :", phrase, f"| prompt {input_ids.shape[1]} tokens")
     gen = torch.Generator(device=model.device).manual_seed(seed)
     g = cfg["generation"]
-    stop_ids = {tok.eos_token_id, tok.convert_tokens_to_ids("<end_of_turn>")}
+    stop_ids = stop_token_ids(model, tok)
     block_eos = g.get("block_eos", False)  # v2 : la prise dure toute la vidéo
 
     trace_f = open(run_dir / "trace.jsonl", "w", encoding="utf-8")
     out_ids: list[int] = []
     try:
-        from transformers import DynamicCache
-        cache = DynamicCache()
         hooks.set_step(-1)
-        out = model(input_ids=input_ids, past_key_values=cache, use_cache=True)
+        # le modèle crée son propre cache (Qwen3.5 mêle attention et couches linéaires à état)
+        out = model(input_ids=input_ids, use_cache=True)
+        cache = out.past_key_values
         logits = out.logits[0, -1]
         for step in range(g["max_new_tokens"]):
             if block_eos:
@@ -175,12 +184,15 @@ def record(cfg: dict, run_dir: Path, model=None, tok=None, lens=None) -> Path:
             rec = {
                 "step": step,
                 "token_id": nxt,
+                "text": tok.decode([nxt]),
                 "token": tok.convert_ids_to_tokens(nxt),
                 "layers": {str(l): w for l, w in zip(reader.band, words)},
                 "entropy": {str(l): round(e, 4) for l, e in zip(reader.band, ent)},
                 "drug": [d.state(step) for d in drugs],
             }
             trace_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            if jrec:
+                jrec.add(hooks.captured, nxt, rec["text"], hooks.alphas)
             if step % 50 == 0:
                 top = [w for w, _ in words[len(words) // 2][:5]]
                 log(f"pas {step} : {top}")
@@ -190,6 +202,9 @@ def record(cfg: dict, run_dir: Path, model=None, tok=None, lens=None) -> Path:
     text = tok.decode(out_ids, skip_special_tokens=True)
     (run_dir / "text.txt").write_text(text, encoding="utf-8")
     log(f"{len(out_ids)} tokens générés")
+    if jrec and out_ids:
+        d = jrec.save(run_dir / "jspace.pt", model=cfg["model"], lens=dict(cfg["lens"]), band=reader.band, phrase=phrase)
+        log(f"jspace.pt : h et jh {tuple(d['h'].shape)} en {d['dtype']}")
     log.done()
     winmod.build(run_dir, cfg)
     return run_dir

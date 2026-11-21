@@ -15,6 +15,17 @@ os.environ.setdefault("HF_HUB_CACHE", str(ROOT / "weights" / "hub"))
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
 
+def cached_snapshot(repo: str) -> str:
+    """Dossier du dépôt HF dans le cache s'il y est, sinon l'identifiant tel quel. Pour charger un dépôt dont
+    on n'a téléchargé qu'une partie (Stable Audio : dossiers diffusers sans les checkpoints à la racine) :
+    à partir de l'identifiant, diffusers refuse un instantané incomplet."""
+    d = Path(os.environ["HF_HUB_CACHE"]) / ("models--" + repo.replace("/", "--"))
+    ref = d / "refs" / "main"
+    if ref.exists() and (d / "snapshots" / ref.read_text().strip()).is_dir():
+        return str(d / "snapshots" / ref.read_text().strip())
+    return repo
+
+
 def deep_merge(base: dict, over: dict) -> dict:
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():

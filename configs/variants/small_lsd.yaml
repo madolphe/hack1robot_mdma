@@ -1,0 +1,6 @@
+# Prise de LSD (catalogue v2) sur Qwen3.5-4B, 1 min, voix + sonorisation
+base: configs/small.yaml
+run_tag: small-lsd
+input: {phrase: "Une machine peut-elle rêver ?"}
+drug: {name: lsd, intensity: 1.0}
+sound: {mode: mixte}

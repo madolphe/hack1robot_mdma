@@ -1,0 +1,4 @@
+# Témoin sobre de small_lsd.yaml : même question, même graine, sans drogue (comparer les jspace.pt)
+base: configs/variants/small_lsd.yaml
+run_tag: small-sober
+drug: {name: aucune}
