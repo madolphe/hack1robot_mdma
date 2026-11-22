@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>hack1robo · le robot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Recursive:slnt,wght,CASL,CRSV,MONO@-15..0,300..1000,0..1,0..1,0..1&family=Roboto+Flex:opsz,slnt,wdth,wght,GRAD,XOPQ,XTRA,YOPQ,YTAS,YTDE,YTFI,YTLC,YTUC@8..144,-10..0,25..151,100..1000,-200..150,27..175,323..603,25..135,649..854,-305..-98,560..788,416..570,528..760&display=swap" rel="stylesheet">
+<style>
+  /* Style commun (robot, banderole, seringue, feuille) : illustration au trait vert sombre, aplats crème,
+     liseré clair d'autocollant, posée sur le fond sombre du template. */
+  :root { --ink:#1E3B31; --cream:#ECE8DC; --rim:#F6F3EA; --bg:#07090a; }
+  * { box-sizing:border-box; margin:0; }
+  html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--cream); font-family:"Roboto Flex", sans-serif; }
+  #stage { position:fixed; inset:0; width:100vw; height:100vh; z-index:0; }
+  #organism { position:fixed; z-index:2; pointer-events:none; display:none; }
+  #organism video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #jspace { position:absolute; inset:0; pointer-events:none; }
+  #jspace span { position:absolute; white-space:nowrap; line-height:1; transition:opacity .35s; font-family:"Roboto Flex"; text-shadow:0 1px 10px rgba(0,0,0,.7); }
+  #fx { position:fixed; inset:0; width:100vw; height:100vh; z-index:3; pointer-events:none; }
+  /* la question : une banderole à encoches, comme une étiquette de projet */
+  #prompt { position:fixed; left:50%; top:3.4vh; z-index:4; pointer-events:none; transform:translateX(-50%) rotate(-1.2deg); transition:opacity .6s; text-align:center; }
+  #prompt .ribbon { display:inline-block; padding:1.2vh 4.2vw 1.3vh; background:var(--rib, #2B3A8F); color:var(--rim); white-space:nowrap;
+                    clip-path: polygon(0 0, 100% 0, 96.5% 50%, 100% 100%, 0 100%, 3.5% 50%); font-size:3.3vh; letter-spacing:.01em;
+                    font-family:"Recursive"; font-variation-settings:'CASL' .9, 'wght' 620, 'slnt' 0, 'MONO' 0; }
+  #prompt .ctx { margin:1vh auto 0; width:max-content; max-width:46vw; padding:.6vh 1.2vw; background:var(--cream); color:var(--ink); border:2px solid var(--ink);
+                 box-shadow:0 0 0 5px var(--rim); border-radius:6px; font-size:1.8vh; transform:rotate(1.6deg); font-family:"Recursive";
+                 font-variation-settings:'CASL' 1, 'wght' 420, 'slnt' -6; }
+  #prompt .ctx:empty { display:none; }
+  #prompt .caret { display:inline-block; width:.09em; height:1em; background:var(--rim); vertical-align:-.12em; margin-left:.06em; animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+  /* la feuille sur laquelle le robot écrit */
+  #output { position:fixed; left:75vw; right:2.6vw; top:14vh; bottom:9vh; z-index:4; overflow:hidden; padding:2.4vh 1.3vw 2vh 2vw;
+            background-color:var(--cream); border:2.5px solid var(--ink); border-radius:8px; box-shadow:0 0 0 7px var(--rim), 0 18px 40px rgba(0,0,0,.45);
+            transform:rotate(1.4deg); opacity:0; transition:opacity .8s, background-color .6s;
+            background-image: repeating-linear-gradient(transparent 0 calc(3.15vh - 1px), rgba(30,59,49,.13) calc(3.15vh - 1px) 3.15vh); }
+  #out { font-family:"Recursive"; font-size:2.1vh; line-height:1.5; color:var(--ink); }
+  #out .w { display:inline-block; margin-right:.3em; white-space:nowrap; }
+  #out .w span { display:inline-block; }
+  #drugs { position:fixed; left:2vw; bottom:2.6vh; z-index:6; display:flex; gap:.8vw; }
+  #drugs button { font-family:"Recursive"; font-variation-settings:'CASL' .8, 'wght' 650; font-size:1.6vh; letter-spacing:.06em; color:var(--ink);
+                  background:var(--cream); border:2px solid var(--ink); box-shadow:0 0 0 4px var(--rim); border-radius:10px; padding:.7vh 1.2vw; cursor:pointer; opacity:.55; }
+  #drugs button.on { opacity:1; transform:rotate(-2deg); }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="organism"><video muted playsinline preload="auto"></video><div id="jspace"></div></div>
+<canvas id="fx"></canvas>
+<div id="prompt"><div class="ribbon"><span class="q"></span></div><div class="ctx"></div></div>
+<div id="output"><div id="out"></div></div>
+<div id="drugs"><button data-drug="lsd">LSD</button><button data-drug="mdma">MDMA</button><button data-drug="neutral">neutre</button></div>
+<audio id="audio" preload="auto"></audio>
+
+<script src="typo.js"></script>
+<script>
+/* Séquence : 1. le robot ; la question se tape sur la banderole.  2. (LSD, MDMA) une seringue arrive, se plante dans le
+   cou et injecte toute la dose.  3. l'expérience commence : la question et la seringue s'en vont, la vidéo s'allume dans
+   l'écran-visage, le robot écrit sur sa feuille.  4. à ZOOM_AT s, on entre doucement (ZOOM_DUR s) dans l'écran :
+   la vidéo passe au premier plan.  5. sous drogue, la fenêtre de la vidéo prend les bordures vivantes. */
+const $ = (s) => document.querySelector(s);
+const PRE_PROMPT = 6.2, IV_IN = 0.9, IV_PUSH = 3.4, IV_HOLD = 0.6, ZOOM_AT = 5, ZOOM_DUR = 7;
+const INK = "#1E3B31", CREAM = "#ECE8DC", RIM = "#F6F3EA";
+const DRUG = {lsd: {col: [124, 58, 255], rib: "#5A2BE8"}, mdma: {col: [255, 92, 150], rib: "#D8457E"}, neutral: {col: [46, 90, 71], rib: "#2B3A8F"}};
+let INDEX, S, M = null, drug = "neutral", phase = "idle", pre = 0, clock = 0, last = 0, idx = 0, tokNow = -1, LA = 0, writeT = 0;
+let analyser = null, actx = null, fbins = null, energy = 0, mediaIdx = 0;
+const blobs = {};
+const blobURL = async (p) => blobs[p] ||= URL.createObjectURL(await (await fetch(p)).blob());
+const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+const lerp = (a, b, t) => a + (b - a) * t;
+function fit(cv) { const r = cv.getBoundingClientRect(), d = devicePixelRatio;
+  if (cv.width !== Math.round(r.width * d) || cv.height !== Math.round(r.height * d)) { cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d); }
+  const g = cv.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0); return [g, r.width, r.height]; }
+const ivTotal = () => drug === "neutral" ? 0 : IV_IN + IV_PUSH + IV_HOLD;
+
+// ------------------------------------------------------------ dose (pilote la typo et les bordures pendant l'expérience)
+const C = {t1: .25, t2: .40, t3: .72, peak: 1, neg: -.6, end: -.1};
+function alphaAt(p) {
+  if (drug === "neutral") return 0;
+  const e = (a, b, x) => a + (b - a) * (.5 - .5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x))));
+  if (p <= C.t1) return e(0, C.peak, p / C.t1); if (p <= C.t2) return C.peak;
+  if (p <= C.t3) return e(C.peak, C.neg, (p - C.t2) / (C.t3 - C.t2)); return e(C.neg, C.end, (p - C.t3) / (1 - C.t3));
+}
+
+// ------------------------------------------------------------ caméra (scène 1920 x 1080 -> écran)
+const SCR = {x: 960, y: 372, hw: 205, hh: 150};  // l'écran-visage, où se joue la vidéo
+function camera(m, W, H) {
+  const base = Math.min(W / 1920, H / 1080), target = (W * 0.30) / (SCR.hw * base), s = base * lerp(1, target, m);
+  const tx = lerp(W / 2 + (SCR.x - 960) * base, W * 0.40, m), ty = lerp(H / 2 + (SCR.y - 540) * base, H * 0.53, m);
+  return {s, base, X: (x) => tx + (x - SCR.x) * s, Y: (y) => ty + (y - SCR.y) * s,
+          apply: (g) => g.setTransform(devicePixelRatio * s, 0, 0, devicePixelRatio * s, devicePixelRatio * (tx - SCR.x * s), devicePixelRatio * (ty - SCR.y * s))};
+}
+
+// ------------------------------------------------------------ style autocollant : liseré clair, aplat, contour sombre
+function sticker(g, path, fill, lw = 5, rim = 16) {
+  g.lineJoin = g.lineCap = "round";
+  if (rim) { g.strokeStyle = RIM; g.lineWidth = rim; g.stroke(path); }
+  if (fill) { g.fillStyle = fill; g.fill(path); }
+  g.strokeStyle = INK; g.lineWidth = lw; g.stroke(path);
+}
+function rr(x, y, w, h, r) { const p = new Path2D(); p.roundRect(x, y, w, h, r); return p; }
+function line(g, pts, lw = 4, col = INK) { g.strokeStyle = col; g.lineWidth = lw; g.lineCap = "round"; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); }
+
+// ------------------------------------------------------------ le robot (d'après l'illustration : tête-télé, casque, bras annelés)
+function arm(g, x0, y0, cx, cy, x1, y1, n) {
+  const P = (t) => [(1 - t) ** 2 * x0 + 2 * (1 - t) * t * cx + t * t * x1, (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t * t * y1];
+  for (let i = n - 1; i >= 0; i--) { const t = (i + .5) / n, [x, y] = P(t), [xa, ya] = P(Math.max(0, t - .02)), [xb, yb] = P(Math.min(1, t + .02));
+    g.save(); g.translate(x, y); g.rotate(Math.atan2(yb - ya, xb - xa) + Math.PI / 2);
+    sticker(g, rr(-30, -15, 60, 30, 13), CREAM, 4, 10); line(g, [[-18, -4], [18, -4]], 2.5); g.restore(); }
+}
+function hand(g, x, y, side, writing, wiggle) {
+  g.save(); g.translate(x, y); g.scale(side, 1);
+  sticker(g, rr(-34, -26, 68, 48, 16), CREAM, 4, 10);
+  for (let f = 0; f < 4; f++) { const fx = -24 + f * 16; sticker(g, rr(fx - 6, 16, 12, 34 - Math.abs(f - 1.5) * 4, 6), CREAM, 3.5, 8); }
+  sticker(g, rr(28, -10, 30, 14, 7), CREAM, 3.5, 8);
+  if (writing) { g.save(); g.translate(-8 + wiggle * 6, 30 + Math.abs(wiggle) * 3); g.rotate(-.35);
+    sticker(g, rr(-7, -110, 14, 120, 4), "#D9C27A", 3.5, 8); g.fillStyle = INK; g.beginPath(); g.moveTo(-7, 10); g.lineTo(7, 10); g.lineTo(0, 30); g.closePath(); g.fill(); g.restore(); }
+  g.restore();
+}
+function drawRobot(g, now, op, accent, faceOp, wiggle) {
+  g.save(); g.globalAlpha = op;
+  line(g, [[430, 760], [1490, 760]], 5);                                  // bureau
+  for (const [x, y, a] of [[880, 800, -.12], [960, 790, .08], [1010, 820, -.04]]) { g.save(); g.translate(x, y); g.rotate(a); sticker(g, rr(-70, -10, 140, 100, 3), CREAM, 3.5, 9); g.restore(); }
+  const torso = new Path2D(); torso.moveTo(820, 760); torso.lineTo(830, 690); torso.quadraticCurveTo(960, 650, 1090, 690); torso.lineTo(1100, 760);
+  sticker(g, torso, CREAM, 4.5, 12); line(g, [[930, 690], [925, 760]], 3); line(g, [[990, 690], [995, 760]], 3);
+  sticker(g, rr(905, 600, 110, 80, 10), CREAM, 4.5, 12);                  // cou
+  g.fillStyle = INK; g.beginPath(); g.arc(PORT.x, PORT.y, 9, 0, 7); g.fill(); // port d'injection
+  arm(g, 845, 690, 720, 700, 760, 830, 7); arm(g, 1075, 690, 1200, 700, 1160, 830, 7);
+  hand(g, 770, 860, 1, true, wiggle); hand(g, 1150, 860, -1, false, 0);
+  for (const x of [668, 1252]) sticker(g, rr(x - 34, 300, 68, 160, 34), accent, 4.5, 12);  // casque audio
+  sticker(g, rr(690, 150, 540, 455, 150), CREAM, 5, 16);                  // tête-télé
+  sticker(g, rr(735, 205, 450, 340, 92), CREAM, 4.5, 0);
+  g.fillStyle = "#0B1512"; g.fill(rr(SCR.x - SCR.hw, SCR.y - SCR.hh, SCR.hw * 2, SCR.hh * 2, 70));
+  if (faceOp > 0) { const blink = (now % 4.7) < .13 ? .12 : 1; g.globalAlpha = op * faceOp; g.fillStyle = RIM;   // le visage
+    for (const x of [905, 1015]) { g.beginPath(); g.ellipse(x, 360, 14, 34 * blink, 0, 0, 7); g.fill(); }
+    g.strokeStyle = RIM; g.lineWidth = 6; g.lineCap = "round"; g.beginPath(); g.arc(960, 405, 26, .35, Math.PI - .35); g.stroke(); }
+  g.restore();
+}
+const PORT = {x: 922, y: 640};
+
+// ------------------------------------------------------------ la seringue : arrive, se plante dans le cou, injecte toute la dose, repart
+function drawSyringe(g, cam, t, out, col) {
+  if (drug === "neutral" || t <= 0 || out >= 1) return;
+  const arrive = smooth(t / IV_IN), push = smooth((t - IV_IN) / IV_PUSH), away = smooth(out), L = 330;
+  g.save(); cam.apply(g); g.globalAlpha = Math.min(arrive * 1.5, 1 - away);
+  g.translate(PORT.x - 4 + lerp(-260, 0, arrive) - 260 * away, PORT.y - 40 * (1 - arrive) + 30 * away); g.rotate(-.18);
+  const bx = -L - 70, liq = L * (1 - push);
+  sticker(g, rr(bx, -34, L, 68, 10), CREAM, 4.5, 14);
+  g.fillStyle = `rgba(${col},.9)`; g.fillRect(bx + L - liq, -26, Math.max(0, liq - 6), 52);
+  for (let i = 1; i < 10; i++) line(g, [[bx + L * i / 10, -34], [bx + L * i / 10, i % 5 ? -20 : -10]], 2.5);
+  sticker(g, rr(bx + L - liq - 16, -30, 14, 60, 3), RIM, 3.5, 0);
+  sticker(g, rr(bx - 120 + (L - liq), -8, 120, 16, 4), CREAM, 3.5, 10);
+  sticker(g, rr(bx - 136 + (L - liq), -38, 18, 76, 6), CREAM, 4, 10);
+  sticker(g, rr(bx + L, -12, 30, 24, 4), CREAM, 3.5, 8);
+  line(g, [[bx + L + 30, 0], [-6, 0]], 3.5);
+  if (push > 0 && push < 1) { g.fillStyle = `rgba(${col},.85)`;
+    for (let j = 0; j < 4; j++) { const r = (t * 3 + j / 4) % 1; g.beginPath(); g.arc(-6 + r * 30, (j - 1.5) * 8 * r, 4 + 6 * r, 0, 7); g.fill(); } }
+  g.restore();
+}
+
+// ------------------------------------------------------------ la fenêtre de la vidéo : écran-visage, puis bordures vivantes
+const ORG = {N: 240, reach: 0, lastWord: null};
+const superR = (th, a, b, n = 6) => Math.pow(Math.pow(Math.abs(Math.cos(th)) / a, n) + Math.pow(Math.abs(Math.sin(th)) / b, n), -1 / n);
+function rayRect(th, hw, hh) { const c = Math.abs(Math.cos(th)), s = Math.abs(Math.sin(th)); return Math.min(c > 1e-6 ? hw / c : 1e9, s > 1e-6 ? hh / s : 1e9); }
+function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
+function videoWindow(cam, W, H, m, now, dt) {
+  const org = $("#organism"), sc = [cam.X(SCR.x), cam.Y(SCR.y)];
+  const R = {cx: W * 0.40, cy: H * 0.53, hw: W * 0.30, hh: H * 0.40}, c = [lerp(sc[0], R.cx, m), lerp(sc[1], R.cy, m)];
+  const k = Math.min(1.3, Math.abs(LA)), pos = LA >= 0, lsd = drug === "lsd", kk = drug === "neutral" ? 0 : Math.min(1, k);
+  const last = $("#out").lastElementChild; if (last !== ORG.lastWord) { ORG.lastWord = last; ORG.reach = 1; } ORG.reach *= Math.exp(-dt / 2.2);
+  const targets = []; if (last) { const r = last.getBoundingClientRect(); if (r.width) { const tx = r.left + r.width / 2 - c[0], ty = r.top + r.height / 2 - c[1];
+    targets.push({a: Math.atan2(ty, tx), d: Math.hypot(tx, ty), w: .35 + .65 * ORG.reach}); } }
+  const beat = Math.pow(Math.max(0, Math.sin(now * Math.PI * 2 * 1.15)), 6), pts = [];
+  for (let i = 0; i < ORG.N; i++) {
+    const th = i / ORG.N * Math.PI * 2, u = [Math.cos(th), Math.sin(th)];
+    const base = lerp(superR(th, SCR.hw * cam.s, SCR.hh * cam.s), rayRect(th, R.hw, R.hh), m);
+    let r = base;
+    if (kk > 0 && pos) { let h = .035 * Math.sin(now * .5) + .3 * energy;
+      if (lsd) { for (let n = 3; n <= 13; n += 2) h += (.13 / Math.sqrt(n)) * Math.sin(n * th + now * (.35 + .1 * n) + n * 1.3); h += .11 * Math.sin(6 * th - now * .6) * (.6 + .4 * Math.sin(now * .3)); }
+      else h += .04 * Math.sin(2 * th + now * .35) + .16 * beat;
+      let live = base * (1 + h);
+      for (const t of targets) { const sig = lsd ? .05 : .3; live += Math.max(0, t.d - base) * (lsd ? .5 : .3) * t.w * Math.exp(-(angDiff(th, t.a) ** 2) / (2 * sig * sig)); }
+      r = lerp(base, live, kk * Math.max(.35, m)); }
+    else if (kk > 0) { const sides = 7, seg = Math.PI * 2 / sides, a0 = ((th % seg) + seg) % seg - seg / 2; r = lerp(base, base * .88 * Math.cos(seg / 2) / Math.cos(a0), kk); }
+    pts.push([c[0] + u[0] * r, c[1] + u[1] * r]);
+  }
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  Object.assign(org.style, {left: x0 + "px", top: y0 + "px", width: x1 - x0 + "px", height: y1 - y0 + "px"});
+  org.style.clipPath = `path("M${pts.map(([x, y]) => (x - x0).toFixed(1) + " " + (y - y0).toFixed(1)).join(" L")} Z")`;
+  org.style.filter = !pos && kk > 0 ? `grayscale(${kk}) brightness(${1 - .3 * kk})` : lsd && kk > 0 ? `hue-rotate(${(Math.sin(now * .25) * 70 * kk).toFixed(1)}deg) saturate(${1 + .6 * kk})`
+    : kk > 0 ? `sepia(${.3 * kk}) saturate(${1 + .35 * kk}) hue-rotate(${-18 * kk}deg)` : "";
+  return {pts, c, kk, pos, lsd, beat};
+}
+function drawMembrane(g, win, now, m) {
+  const {pts, c, kk, pos, lsd, beat} = win;
+  const ring = (sc) => { g.beginPath(); pts.forEach(([x, y], i) => { const X = c[0] + (x - c[0]) * sc, Y = c[1] + (y - c[1]) * sc; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); };
+  if (m < 1) { g.globalAlpha = 1 - m; g.lineJoin = "round"; g.strokeStyle = INK; g.lineWidth = 4.5; ring(1); g.stroke(); g.globalAlpha = 1; }  // contour de l'écran
+  if (kk < .02) return;
+  if (pos && lsd) { const h0 = (now * 40) % 360;
+    for (const [sc, al] of [[1.10, .18], [1.05, .35], [1, .9]]) { g.strokeStyle = `hsla(${(h0 + sc * 300) % 360} 95% 65% / ${al * kk})`; g.lineWidth = sc === 1 ? 2.5 : 1.5;
+      g.shadowColor = `hsla(${h0} 100% 70% / ${kk})`; g.shadowBlur = sc === 1 ? 22 : 8; ring(sc); g.stroke(); } }
+  else if (pos) { g.strokeStyle = `rgba(255,150,190,${(.6 + .4 * beat) * kk})`; g.lineWidth = 4 + 9 * beat; g.shadowColor = "rgba(255,90,160,.95)"; g.shadowBlur = 34 + 40 * beat; ring(1); g.stroke(); }
+  else { g.strokeStyle = `rgba(170,180,190,${.6 * kk})`; g.lineWidth = 1; ring(1); g.stroke(); }
+  g.shadowBlur = 0;
+}
+
+// ------------------------------------------------------------ mots du J-space sur la vidéo
+let jsTok = -2;
+const hash = (w) => { let h = 0; for (const ch of w) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); };
+function jspace(now) {
+  const box = $("#jspace");
+  if (tokNow !== jsTok) { jsTok = tokNow; const t = S.tokens[tokNow], count = {};
+    if (t) t.l.forEach((ws, k) => { if (ws[0]) count[ws[0]] = (count[ws[0]] || 0) + 1 + k / 40; });
+    const words = Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 10), keep = new Set(words.map(w => w[0]));
+    [...box.children].forEach(s => { if (!keep.has(s.textContent)) { s.style.opacity = 0; setTimeout(() => s.remove(), 400); } });
+    words.forEach(([w, c], j) => { let s = [...box.children].find(x => x.textContent === w && x.style.opacity !== "0");
+      if (!s) { s = document.createElement("span"); s.textContent = w; s.style.opacity = 0; box.appendChild(s); requestAnimationFrame(() => s.style.opacity = 1); } s._w = c; s._r = j; }); }
+  const W = box.clientWidth, H = box.clientHeight, mx = Math.max(1, ...[...box.children].map(s => s._w || 1)), k = drug === "neutral" ? 0 : Math.min(1, Math.abs(LA)), st = TYPO.state();
+  [...box.children].forEach(s => { const w = (s._w || 1) / mx, h = hash(s.textContent), j = s._r || 0;
+    const x0 = W * .06, y0 = H * .9 - j * H * .065, x1 = W * (.08 + .76 * ((h % 997) / 997)) + Math.sin(now * .3 + h) * 30 * k, y1 = H * (.12 + .74 * (((h >> 10) % 991) / 991));
+    s.style.left = lerp(x0, x1, k) + "px"; s.style.top = lerp(y0, y1, k) + "px";
+    s.style.fontSize = lerp(14 + 14 * w, (22 + 50 * w) * (.8 + .25 * Math.sin(now * .8 + j)), k) + "px";
+    s.style.transform = `rotate(${(((h >> 4) % 61) - 30) * k}deg)`; s.style.fontVariationSettings = `'wght' ${(300 + 500 * w).toFixed(0)}, 'opsz' 36`;
+    s.style.color = k < .05 ? "rgba(255,255,255,.92)" : `hsl(${(st.hue + (h % 120) * k + st.huespin * now) % 360} ${Math.max(40, st.sat)}% ${70 + 15 * w}%)`; });
+}
+
+// ------------------------------------------------------------ la feuille : le robot écrit (couleurs du moteur passées en encre sur papier)
+let entNorm = [];
+function addWord(i, st) {
+  const w = S.words[i], out = $("#out");
+  for (let n = 0; n < w.nl; n++) out.appendChild(document.createElement("br"));
+  const el = document.createElement("span"); el.className = "w"; [...w.w].forEach(ch => { const c = document.createElement("span"); c.textContent = ch; el.appendChild(c); });
+  out.appendChild(el); TYPO.birth(el, i, st, clock); $("#output").scrollTop = $("#output").scrollHeight; tokNow = w.t1; writeT = 1;
+}
+function inkify(el) {  // clair sur sombre -> encre sur papier : même teinte, luminosité inversée
+  for (const s of el.children) { const m = s.style.color.match(/rgb\((\d+), (\d+), (\d+)\)/); if (!m) continue;
+    let [r, g, b] = [+m[1], +m[2], +m[3]].map(x => x / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    const sa = d ? (l > .5 ? d / (2 - mx - mn) : d / (mx + mn)) : 0, h = !d ? 0 : mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    s.style.color = sa < .08 ? INK : `hsl(${(h * 60).toFixed(0)} ${Math.min(100, sa * 100 + 15).toFixed(0)}% ${Math.max(22, 100 - l * 100 * .85).toFixed(0)}%)`; }
+}
+function styleOutput() { const basePx = parseFloat(getComputedStyle($("#out")).fontSize), box = $("#output");
+  for (const el of $("#out").children) { if (!el.classList.contains("w") || el._done) continue;
+    TYPO.style(el, clock, {ent: entNorm[el._i], box, basePx}); inkify(el); el.style.textShadow = "none"; if (TYPO.still(el, clock)) el._done = true; } }
+
+// ------------------------------------------------------------ boucle
+function frame(nowMs) {
+  const dt = Math.min(.1, (nowMs - last) / 1000); last = nowMs; const now = nowMs / 1000;
+  if (!S) return requestAnimationFrame(frame);
+  if (phase === "prompt" || phase === "iv") {
+    pre += dt;
+    const q = S.question, total = q.length + S.context.length, nq = Math.floor(Math.max(0, pre - .9) / 3.8 * total);
+    $("#prompt .q").innerHTML = q.slice(0, nq) + (nq < total ? '<span class="caret"></span>' : "");
+    $("#prompt .ctx").textContent = nq > q.length ? S.context.slice(0, nq - q.length) : "";
+    if (phase === "prompt" && pre >= PRE_PROMPT) { if (drug === "neutral") startLive(); else phase = "iv"; }
+    else if (phase === "iv" && pre >= PRE_PROMPT + ivTotal()) startLive();
+  }
+  if (phase === "live" && M) { const au = $("#audio"), v = $("#organism video"); clock = au.currentTime; if (Math.abs(v.currentTime - clock) > .15) v.currentTime = clock; }
+  const p = M && phase === "live" ? Math.min(1, clock / M.duration) : 0, a = phase === "live" ? alphaAt(p) : 0;
+  LA += (a - LA) * (1 - Math.exp(-dt / 1.4));
+  TYPO.update(a, dt); const st = TYPO.state();
+  if (phase === "live") { while (idx < S.words.length && M.times[idx] <= clock) addWord(idx++, st); $("#output").style.opacity = 1; }
+  writeT *= Math.exp(-dt / .35);
+  if (analyser) { analyser.getByteFrequencyData(fbins); let s = 0; for (let i = 2; i < 120; i++) s += fbins[i]; energy += ((s / 118 / 255) - energy) * (1 - Math.exp(-dt / .1)); }
+  const m = phase === "live" ? smooth((clock - ZOOM_AT) / ZOOM_DUR) : 0;
+  const [g, W, H] = fit($("#stage")), cam = camera(m, W, H), d = DRUG[drug], col = d.col.join(",");
+  g.clearRect(0, 0, W, H); g.fillStyle = "#07090a"; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 120; i++) { const x = ((i * 137.5 + now * (5 + 18 * Math.abs(LA)) * (1 + i % 3)) % (W + 40)) - 20, y = (i * 71.3) % H;
+    g.fillStyle = `rgba(${drug === "neutral" ? "236,232,220" : col},${.05 + .12 * Math.abs(LA) * ((i % 5) / 4)})`; g.fillRect(x, y, 1.6, 1.6); }
+  const robotOp = phase === "idle" ? 0 : phase === "live" ? 1 : smooth(pre / 1.1);
+  const faceOp = phase === "live" ? Math.max(0, 1 - clock / 1.2) : 1;
+  const accent = drug === "neutral" ? "#2E5A47" : `rgb(${col})`;
+  cam.apply(g); drawRobot(g, now, robotOp, accent, faceOp, writeT * Math.sin(now * 38)); g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  const ivT = phase === "iv" ? pre - PRE_PROMPT : phase === "live" ? ivTotal() + clock : 0;
+  drawSyringe(g, cam, ivT, phase === "live" ? clock / 1.4 : 0, col);
+  $("#organism").style.display = M && phase === "live" ? "block" : "none";
+  const [fg] = fit($("#fx")); fg.clearRect(0, 0, W, H);
+  if (M && phase === "live") { const win = videoWindow(cam, W, H, m, now, dt); $("#organism").style.opacity = smooth(clock / 1.2); drawMembrane(fg, win, now, m); jspace(now); $("#jspace").style.opacity = smooth((clock - 1) / 2); }
+  $("#prompt").style.opacity = phase === "live" ? Math.max(0, 1 - clock / 1.6) : phase === "idle" ? 0 : 1;
+  document.documentElement.style.setProperty("--rib", d.rib);
+  $("#output").style.backgroundColor = drug === "neutral" || phase !== "live" ? CREAM : `hsl(${st.bg_hue} ${Math.min(45, st.bg_sat)}% ${lerp(91, 86, Math.min(1, Math.abs(LA)))}%)`;
+  styleOutput();
+  requestAnimationFrame(frame);
+}
+
+function startLive() {
+  phase = "live"; clock = 0; const au = $("#audio"), v = $("#organism video");
+  if (!actx) actx = new AudioContext();
+  if (!analyser) { const src = actx.createMediaElementSource(au); analyser = actx.createAnalyser(); analyser.fftSize = 1024;
+    src.connect(analyser); analyser.connect(actx.destination); fbins = new Uint8Array(analyser.frequencyBinCount); }
+  actx.resume(); au.currentTime = 0; v.currentTime = 0; au.play(); v.play();
+}
+function start(dr) {
+  drug = dr; phase = "prompt"; pre = 0; clock = 0; idx = 0; tokNow = -1; jsTok = -2; LA = 0;
+  TYPO.setDrug(dr); TYPO.reset(); $("#out").innerHTML = ""; $("#jspace").innerHTML = ""; $("#output").style.opacity = 0;
+  const au = $("#audio"), v = $("#organism video"); au.pause(); v.pause(); v.currentTime = 0;
+  document.querySelectorAll("#drugs button").forEach(b => b.classList.toggle("on", b.dataset.drug === dr));
+}
+async function useMedia(i) { M = S.media[i % S.media.length]; const [vu, au] = await Promise.all([blobURL(M.video), blobURL(M.audio)]);
+  $("#organism video").src = vu; $("#audio").src = au; }
+
+(async () => {
+  INDEX = await (await fetch("data/index.json")).json();
+  S = await (await fetch(`data/${INDEX.sessions[0]}.json`)).json();  // q1_rave : la session qui a sa vidéo et son son
+  const e = S.words.map(w => { let s = 0; for (let t = w.t0; t <= w.t1; t++) s += S.tokens[t].e; return s / (w.t1 - w.t0 + 1); }), srt = [...e].sort((a, b) => a - b);
+  entNorm = e.map(v => srt.indexOf(v) / Math.max(1, srt.length - 1));
+  await useMedia(0);
+  document.querySelectorAll("#drugs button").forEach(b => b.onclick = () => { if (!actx) actx = new AudioContext(); start(b.dataset.drug); });
+  addEventListener("keydown", async (ev) => { if (ev.key.toLowerCase() === "v") { mediaIdx++; await useMedia(mediaIdx); } });
+  requestAnimationFrame((n) => { last = n; requestAnimationFrame(frame); });
+})();
+</script>
+</body>
+</html>
