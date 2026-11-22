@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>hack1robo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Recursive:slnt,wght,CASL,CRSV,MONO@-15..0,300..1000,0..1,0..1,0..1&family=Roboto+Flex:opsz,slnt,wdth,wght,GRAD,XOPQ,XTRA,YOPQ,YTAS,YTDE,YTFI,YTLC,YTUC@8..144,-10..0,25..151,100..1000,-200..150,27..175,323..603,25..135,649..854,-305..-98,560..788,416..570,528..760&display=swap" rel="stylesheet">
+<style>
+  /* ÉTAPE 1 : LAYOUT. L'esthétique viendra ensuite. Touche L : afficher / masquer le contour des zones. */
+  :root { --bg:#0a0a0c; --ink:#e9e7e2; --mute:#5d5c66; --line:#1f1f26; --acc:#d8ff5c; --gap:1.4vh; }
+  * { box-sizing:border-box; margin:0; }
+  html, body { height:100%; background:var(--bg); color:var(--ink); overflow:hidden;
+               font-family:"Recursive", system-ui, sans-serif; }
+  body { display:grid; grid-template-rows: 6.5vh 18vh minmax(0, 1fr); gap:var(--gap); padding:2.2vh 2vw; }
+
+  /* zones : contour visible pendant la mise en place du layout */
+  .zone { position:relative; min-height:0; min-width:0; overflow:hidden; border-radius:6px; }
+  body.layout .zone { outline:1px dashed #2c2c36; outline-offset:-1px; }
+
+  /* 1. trois boutons */
+  #drugs { display:flex; justify-content:center; align-items:center; gap:2vw; }
+  #drugs button { font:inherit; font-size:2.2vh; letter-spacing:.18em; font-variation-settings:'MONO' 1, 'wght' 600;
+                  color:var(--ink); background:transparent; border:1px solid #34343e; border-radius:999px;
+                  padding:1.2vh 3.2vw; cursor:pointer; transition:all .25s; }
+  #drugs button:hover { border-color:#777; }
+  #drugs button.on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+
+  /* 2. dose (état au cours du temps) | mots-clés de la drogue */
+  #state { display:grid; grid-template-columns: 1.55fr 1fr; grid-template-rows: minmax(0, 1fr); gap:var(--gap); min-height:0; }
+  #dose canvas { width:100%; height:100%; display:block; }
+  #keywords { display:flex; flex-wrap:wrap; align-content:center; justify-content:center; gap:.4vh 1.1vw; padding:.6vh 1.5vw; }
+  #keywords span { font-size:1.8vh; transition:opacity .8s, transform .8s; font-variation-settings:'CASL' .6; }
+  #about { display:flex; flex-direction:column; justify-content:center; padding:1.5vh 1.6vw; }
+  #about .phase { font-size:2.4vh; font-variation-settings:'wght' 650; letter-spacing:.02em; transition:opacity .6s; }
+  #about .desc { font-size:1.65vh; line-height:1.45; color:#a9a7b0; margin-top:1vh; transition:opacity .6s; }
+
+  /* 3. zone principale (65 % de la hauteur) : prompt | réseau / décodage | texte de sortie */
+  #main { display:grid; grid-template-columns: 16% minmax(0, 1fr) 28%; grid-template-rows: minmax(0, 1fr); gap:var(--gap); min-height:0; }
+  #prompt { display:flex; flex-direction:column; justify-content:center; padding:2vh 1.2vw; }
+  #prompt .q { font-size:2.6vh; line-height:1.3; font-variation-settings:'wght' 500; }
+  #prompt .ctx { font-size:1.6vh; line-height:1.4; color:#8a8993; margin-top:2vh; font-variation-settings:'CASL' 1, 'slnt' -8; }
+  #center { display:grid; grid-template-rows: minmax(0, 20fr) minmax(0, 70fr) minmax(0, 10fr); gap:var(--gap); min-height:0; }
+  #latent canvas, #spectrum canvas { width:100%; height:100%; display:block; }
+  #right { display:grid; grid-template-rows: minmax(0, 64fr) minmax(0, 36fr); gap:var(--gap); min-height:0; }
+  /* la vidéo vit dans une couche libre, ancrée sur la zone #latent ; sa forme (clip-path) suit la drogue */
+  #organism { position:fixed; z-index:1; pointer-events:none; display:none; will-change:clip-path; }
+  #organism.has-video { display:block; }
+  #organism video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #membrane { position:fixed; inset:0; width:100vw; height:100vh; z-index:4; pointer-events:none; }
+  /* ouverture en neutre : une tête de profil (sous la vidéo), des électrodes et leurs mots (au-dessus) */
+  #headcv { position:fixed; inset:0; width:100vw; height:100vh; z-index:0; pointer-events:none; }
+  #ewords { position:fixed; inset:0; z-index:5; pointer-events:none; }
+  #ewords span { position:absolute; transform:translate(-50%, -50%); white-space:nowrap; font-family:"Roboto Flex";
+                 font-variation-settings:'wght' 420, 'wdth' 92, 'opsz' 24; font-size:19px; color:#e9e7e2; }
+  #ewords span.pop { animation: pop .7s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes pop { from { transform:translate(-50%, -50%) scale(1.6); opacity:0; } to { transform:translate(-50%, -50%) scale(1); opacity:1; } }
+  #drugs, #state, #prompt, #net, #keywords, #right { position:relative; z-index:2; }
+  /* mots du J-space : ce que lit la lentille dans les couches pour le token en cours, posés sur la vidéo */
+  #jspace { position:absolute; inset:0; pointer-events:none; z-index:2; }
+  #jspace span { position:absolute; white-space:nowrap; line-height:1; transition:opacity .35s;
+                 font-family:"Roboto Flex"; text-shadow:0 1px 10px rgba(0,0,0,.65); }
+  .zone { transform-origin:50% 50%; will-change:transform, border-radius; }
+  #latent { z-index:0; }
+  #net canvas { width:100%; height:100%; display:block; }
+  #output { padding:2vh 1.4vw 7vh; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; }
+  #output::-webkit-scrollbar { display:none; }
+  #out { font-size:2.15vh; line-height:1.5; }
+  #out .w { display:inline-block; margin-right:.3em; white-space:nowrap; }
+  #out .w span { display:inline-block; will-change:transform; }
+  #output { transition: background .4s linear; }
+</style>
+</head>
+<body class="layout">
+
+<section id="drugs" class="zone">
+  <button data-drug="lsd">LSD</button>
+  <button data-drug="mdma">MDMA</button>
+  <button data-drug="neutral">NEUTRAL</button>
+</section>
+
+<section id="state">
+  <div id="dose" class="zone"><canvas></canvas></div>
+  <div id="about" class="zone"><div class="phase"></div><div class="desc"></div></div>
+</section>
+
+<section id="main">
+  <div id="prompt" class="zone"><div class="q"></div><div class="ctx"></div></div>
+  <div id="center">
+    <div id="net" class="zone"><canvas></canvas></div>
+    <div id="latent" class="zone"><canvas></canvas></div>
+    <div id="keywords" class="zone"></div>
+  </div>
+  <div id="right">
+    <div id="output" class="zone"><div id="out"></div></div>
+    <div id="spectrum" class="zone"><canvas></canvas></div>
+  </div>
+</section>
+
+<div id="organism"><video muted playsinline preload="auto"></video><div id="jspace"></div></div>
+<canvas id="headcv"></canvas>
+<canvas id="membrane"></canvas>
+<div id="ewords"></div>
+<audio id="audio" preload="auto"></audio>
+<script src="typo.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+let M = null, mediaIdx = 0;  // médias déjà générés (vidéo + son) de la session, s'il y en a
+const blobs = {};
+async function blobURL(path) { return blobs[path] ||= URL.createObjectURL(await (await fetch(path)).blob()); }  // http.server ne gère pas Range
+async function useMedia(i) {
+  M = S.media?.length ? S.media[i % S.media.length] : null;
+  $("#organism").classList.toggle("has-video", !!M);
+  if (!M) return;
+  const v = $("#organism video"), au = $("#audio");
+  [v.src, au.src] = await Promise.all([blobURL(M.video), blobURL(M.audio)]);
+  v.currentTime = 0; au.currentTime = 0;
+}
+let INDEX, S, drug = "neutral", playing = false, idx = 0, clock = 0, nextAt = 0, last = 0, tokNow = -1, pulse = 0;
+const RATE = 5;  // mots par seconde
+
+// ---------------------------------------------------------------- dose : montée, pic, descente, passage en négatif
+const CURVE = {t1: .25, t2: .40, t3: .72, peak: 1, neg: -.6, end: -.1};
+function alphaAt(p) {
+  if (drug === "neutral") return 0;
+  const c = CURVE, e = (a, b, x) => a + (b - a) * (.5 - .5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x))));
+  if (p <= c.t1) return e(0, c.peak, p / c.t1);
+  if (p <= c.t2) return c.peak;
+  if (p <= c.t3) return e(c.peak, c.neg, (p - c.t2) / (c.t3 - c.t2));
+  return e(c.neg, c.end, (p - c.t3) / (1 - c.t3));
+}
+function phaseAt(p) {
+  const ph = INDEX.drugs[drug]?.phases; if (!ph) return null;
+  return ph.find(x => p >= x.start && p < x.end) || ph[ph.length - 1];
+}
+
+// ---------------------------------------------------------------- canvas aux dimensions de leur zone
+function fit(cv) {
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio;
+  if (cv.width !== Math.round(r.width * d) || cv.height !== Math.round(r.height * d)) { cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d); }
+  const g = cv.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0); return [g, r.width, r.height];
+}
+
+function drawDose(p, a) {
+  const [g, W, H] = fit($("#dose canvas")), pad = 12, y = (v) => H / 2 - v / 1.2 * (H / 2 - pad);
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = "#26262e"; g.lineWidth = 1; g.beginPath(); g.moveTo(pad, y(0)); g.lineTo(W - pad, y(0)); g.stroke();
+  g.beginPath();
+  for (let i = 0; i <= 240; i++) { const q = i / 240, x = pad + q * (W - 2 * pad); i ? g.lineTo(x, y(alphaAt(q))) : g.moveTo(x, y(alphaAt(q))); }
+  g.strokeStyle = "#3a3a44"; g.lineWidth = 1.5; g.stroke();
+  // partie déjà parcourue
+  g.beginPath(); g.moveTo(pad, y(0));
+  for (let i = 0; i <= 240 * p; i++) { const q = i / 240; g.lineTo(pad + q * (W - 2 * pad), y(alphaAt(q))); }
+  g.lineTo(pad + p * (W - 2 * pad), y(0)); g.closePath();
+  g.fillStyle = a >= 0 ? "rgba(216,255,92,.18)" : "rgba(92,200,255,.18)"; g.fill();
+  const x = pad + p * (W - 2 * pad);
+  g.fillStyle = a >= 0 ? "#d8ff5c" : "#5cc8ff"; g.beginPath(); g.arc(x, y(a), 4, 0, 7); g.fill();
+}
+
+// ---------------------------------------------------------------- comportement de la drogue (phase en cours)
+const ABOUT = {
+  neutral: {"": "Sans substance. Le réseau pense sans perturbation : ses mots latents suivent le fil du texte."},
+  lsd: {
+    "Montée": "Les perceptions se dérèglent doucement : couleurs plus vives, motifs qui respirent, légère euphorie.",
+    "Pic": "Les frontières se dissolvent : synesthésies, motifs fractals, le langage se fragmente et associe librement.",
+    "Plateau": "Pensée en spirale et introspection ; les associations restent riches, mais ralentissent.",
+    "Retour": "Les formes se stabilisent, fatigue et clarté mêlées ; le discours retrouve sa ligne.",
+  },
+  mdma: {
+    "Montée": "Chaleur dans le corps, énergie qui monte, envie de parler et de toucher.",
+    "Amour, fusion": "Empathie massive, sentiment d'union : les mots deviennent tendres, collectifs, enveloppants.",
+    "Descente": "L'intensité retombe ; il reste une douceur fatiguée, la mâchoire serrée.",
+    "Contrecoup": "Vide et tristesse des jours suivants : le langage s'appauvrit et se refroidit.",
+  },
+};
+let aboutKey = null;
+function drawAbout(p) {
+  const ph = phaseAt(p), name = ph ? ph.name : "", key = drug + "|" + name;
+  if (key === aboutKey) return;
+  aboutKey = key;
+  const box = $("#about");
+  box.querySelector(".phase").textContent = drug === "neutral" ? "" : name;
+  box.querySelector(".desc").textContent = (ABOUT[drug] || {})[name] || "";
+}
+
+// ---------------------------------------------------------------- mots-clés de la drogue (phase en cours)
+let kwPhase = null;
+function drawKeywords(p, a) {
+  const ph = phaseAt(p), box = $("#keywords");
+  if (!ph) { if (kwPhase !== null) { box.innerHTML = ""; kwPhase = null; } return; }
+  if (kwPhase !== ph.name) {
+    kwPhase = ph.name; box.innerHTML = "";
+    ph.words.slice(0, 18).forEach((w, i) => { const s = document.createElement("span"); s.textContent = w; s.dataset.i = i; box.appendChild(s); });
+  }
+  [...box.children].forEach((s, i) => {
+    const on = 0.5 + 0.5 * Math.sin(clock * 0.9 + i * 1.7) > 1 - Math.abs(a) * 0.8;  // plus α est fort, plus de mots sont présents
+    s.style.opacity = on ? (0.35 + 0.65 * Math.abs(a)).toFixed(2) : 0.08;
+  });
+}
+
+// ---------------------------------------------------------------- réseau : 48 couches, bande lue et couches droguées
+const NODES = 7;
+function layerX(l, W, pad) { return pad + l / (S.n_layers - 1) * (W - 2 * pad); }
+function drawNet(a) {
+  const [g, W, H] = fit($("#net canvas")), pad = W * 0.03, top = H * 0.12, bot = H * 0.88;
+  const band = S.layers, [b0, b1] = INDEX.band.map(f => Math.round(f * S.n_layers));
+  g.clearRect(0, 0, W, H);
+  const ny = (k) => top + k / (NODES - 1) * (bot - top);
+  for (let l = 0; l < S.n_layers; l++) {
+    const x = layerX(l, W, pad), inBand = band.includes(l), drugged = l >= b0 && l <= b1 && drug !== "neutral";
+    // liaisons vers la couche suivante
+    if (l < S.n_layers - 1) {
+      const x2 = layerX(l + 1, W, pad);
+      g.strokeStyle = `rgba(255,255,255,${inBand ? .06 : .03})`; g.lineWidth = .6; g.beginPath();
+      for (let i = 0; i < NODES; i++) for (let j = 0; j < NODES; j += 2) { g.moveTo(x, ny(i)); g.lineTo(x2, ny((i + j) % NODES)); }
+      g.stroke();
+    }
+    // passage du token : une onde de gauche à droite
+    const wave = Math.max(0, 1 - Math.abs(pulse * (S.n_layers + 8) - l) / 5);
+    for (let i = 0; i < NODES; i++) {
+      let r = inBand ? 2.6 : 1.8, c = inBand ? "#9a99a3" : "#45444d";
+      if (drugged) { r += 2.2 * Math.abs(a); c = a >= 0 ? `rgba(216,255,92,${.4 + .6 * Math.abs(a)})` : `rgba(92,200,255,${.4 + .6 * Math.abs(a)})`; }
+      g.fillStyle = c; g.beginPath(); g.arc(x, ny(i), r + wave * 2.5, 0, 7); g.fill();
+      if (wave > 0) { g.fillStyle = `rgba(255,255,255,${wave * .8})`; g.beginPath(); g.arc(x, ny(i), 1.5, 0, 7); g.fill(); }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- sortie : texte écrit mot à mot (distorsion à venir)
+function addWord(i, st) {
+  const w = S.words[i], out = $("#out");
+  for (let n = 0; n < w.nl; n++) out.appendChild(document.createElement("br"));
+  const el = document.createElement("span"); el.className = "w";
+  [...w.w].forEach(ch => { const c = document.createElement("span"); c.textContent = ch; el.appendChild(c); });
+  out.appendChild(el);
+  TYPO.birth(el, i, st, clock);  // la typo du mot est celle du moment où il est écrit
+  $("#output").scrollTop = $("#output").scrollHeight;
+  tokNow = w.t1; pulse = 0;
+}
+let entNorm = [];
+function wordEntropy() {  // entropie J-lens moyenne des tokens de chaque mot, en rang centile sur le texte
+  const e = S.words.map(w => { let s = 0; for (let t = w.t0; t <= w.t1; t++) s += S.tokens[t].e; return s / (w.t1 - w.t0 + 1); });
+  const sorted = [...e].sort((a, b) => a - b);
+  entNorm = e.map(v => sorted.indexOf(v) / Math.max(1, sorted.length - 1));
+}
+function styleOutput() {
+  const basePx = parseFloat(getComputedStyle($("#out")).fontSize), box = $("#output");
+  for (const el of $("#out").children) {
+    if (!el.classList.contains("w") || el._done) continue;
+    TYPO.style(el, clock, {ent: entNorm[el._i], box, basePx});
+    if (TYPO.still(el, clock)) el._done = true;
+  }
+}
+
+// ---------------------------------------------------------------- mots du J-space (token en cours)
+// Les mots lus par la J-lens aux 26 couches de la bande pour le token en cours. Plus un mot revient d'une couche à
+// l'autre, plus il est gros. Sobre : une colonne alignée en bas à gauche ; sous drogue : dispersés sur la vidéo.
+let jsTok = -2;
+const hash = (w) => { let h = 0; for (const c of w) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
+function buildJspace() {
+  if (tokNow === jsTok) return; jsTok = tokNow;
+  const box = $("#jspace"), t = S.tokens[tokNow];
+  const count = {};
+  if (t) t.l.forEach((ws, k) => { const w = ws[0]; if (w) count[w] = (count[w] || 0) + 1 + k / 40; });
+  const words = Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 14);
+  const keep = new Set(words.map(w => w[0]));
+  [...box.children].forEach(s => { if (!keep.has(s.textContent)) { s.style.opacity = 0; setTimeout(() => s.remove(), 400); } else s._w = count[s.textContent]; });
+  words.forEach(([w, c], j) => {
+    let s = [...box.children].find(x => x.textContent === w && x.style.opacity !== "0");
+    if (!s) { s = document.createElement("span"); s.textContent = w; s.style.opacity = 0; box.appendChild(s); requestAnimationFrame(() => s.style.opacity = 1); }
+    s._w = c; s._rank = j;
+  });
+}
+function drawJspace(k, st, now) {
+  const box = $("#jspace"), W = box.clientWidth, H = box.clientHeight, maxW = Math.max(1, ...[...box.children].map(s => s._w || 1));
+  [...box.children].forEach((s) => {
+    const w = (s._w || 1) / maxW, h = hash(s.textContent), j = s._rank || 0;
+    // sobre : colonne alignée à gauche, du bas vers le haut
+    const fs0 = 15 + 17 * w, x0 = W * 0.035, y0 = H * 0.92 - j * H * 0.062;
+    // drogue : position tirée du mot, qui dérive lentement ; taille et rotation qui s'emballent
+    const x1 = W * (0.05 + 0.8 * ((h % 997) / 997)) + Math.sin(now * 0.3 + h) * 30 * k;
+    const y1 = H * (0.1 + 0.8 * (((h >> 10) % 991) / 991)) + Math.cos(now * 0.25 + h) * 24 * k;
+    const fs1 = (24 + 64 * w) * (0.8 + 0.25 * Math.sin(now * 0.8 + j));  // tous les mots grossissent, les plus présents davantage
+    const m = Math.min(1, k);
+    s.style.left = (x0 + (x1 - x0) * m).toFixed(1) + "px"; s.style.top = (y0 + (y1 - y0) * m).toFixed(1) + "px";
+    s.style.fontSize = (fs0 + (fs1 - fs0) * m).toFixed(1) + "px";
+    s.style.transform = `rotate(${(((h >> 4) % 61) - 30) * m}deg)`;
+    s.style.fontVariationSettings = `'wght' ${(300 + 500 * w).toFixed(0)}, 'wdth' ${(100 + ((h % 5) - 2) * 25 * m).toFixed(0)}, 'opsz' 36`;
+    const hue = (st.hue + (h % 120) * m + st.huespin * now) % 360;
+    s.style.color = drug === "neutral" || k < 0.05 ? "rgba(255,255,255,.92)" : `hsl(${hue} ${Math.max(40, st.sat)}% ${70 + 15 * w}%)`;
+  });
+}
+
+// ---------------------------------------------------------------- le layout sous influence
+// Sobre (α = 0) : grille droite. Sous drogue, les zones se déforment avec α (lissé) : la grille redistribue la place
+// (la vidéo grandit), chaque zone tourne, dérive et s'arrondit ; LSD = ondulation et blobs, MDMA = fusion et
+// battement. Contrecoup (α < 0) : tout se raidit, rétrécit, pâlit et se désaligne.
+const ZONES = ["#dose", "#about", "#prompt", "#net", "#keywords", "#output", "#spectrum"];
+let LA = 0, lastGrid = "";
+function warpLayout(a, dt, now) {
+  LA += (a - LA) * (1 - Math.exp(-dt / 1.4));
+  const k = Math.min(1.3, Math.abs(LA)), pos = LA >= 0, lsd = drug === "lsd", q = (v) => Math.round(v * 2) / 2;
+  // redistribution de la place (pas trop souvent : les canevas se recalculent à chaque changement)
+  const cols = pos ? [16 - 2 * k, 28 - 2 * k] : [16 + 5 * k, 28 + 7 * k];  // la liberté de la vidéo est portée par l'organisme
+  const rows = pos ? [20 - 4 * k, 70 + 5 * k, 10 - 1 * k] : [20 + 8 * k, 70 - 22 * k, 10 + 6 * k];
+  const top = pos ? 18 - 6 * k : 18 + 3 * k;
+  const grid = [cols, rows, top].flat().map(q).join();
+  if (grid !== lastGrid) {
+    lastGrid = grid;
+    $("#main").style.gridTemplateColumns = `${q(cols[0])}% minmax(0, 1fr) ${q(cols[1])}%`;
+    $("#center").style.gridTemplateRows = rows.map(r => `minmax(0, ${q(r)}fr)`).join(" ");
+    document.body.style.gridTemplateRows = `6.5vh ${q(top)}vh minmax(0, 1fr)`;
+  }
+  ZONES.forEach((sel, i) => {
+    const z = $(sel); if (!z) return;
+    if (k < 0.01 || drug === "neutral") { z.style.transform = ""; z.style.borderRadius = ""; z.style.filter = ""; z.style.opacity = ""; return; }
+    const ph = i * 1.7, video = sel === "#latent";
+    if (!pos) {  // contrecoup : raide, petit, terne, légèrement de travers
+      const tilt = ((i * 37) % 7 - 3) * 0.6 * k;
+      z.style.transform = `translate(${((i * 53) % 9 - 4) * 3 * k}px, ${((i * 29) % 7 - 3) * 3 * k}px) rotate(${tilt}deg) scale(${1 - 0.07 * k})`;
+      z.style.borderRadius = ""; z.style.filter = `grayscale(${Math.min(1, k)}) brightness(${1 - 0.25 * k})`; z.style.opacity = 1 - 0.25 * k;
+      return;
+    }
+    z.style.filter = ""; z.style.opacity = "";
+    if (lsd) {  // ondulation, cisaillement, blobs qui respirent ; la vidéo déborde sur ses voisines
+      const rot = k * (video ? 2.5 : 5) * Math.sin(now * 0.35 + ph), sk = k * 5 * Math.sin(now * 0.27 + ph * 1.3);
+      const tx = k * 34 * Math.sin(now * 0.22 + ph), ty = k * 26 * Math.cos(now * 0.19 + ph * .8);
+      const sc = (video ? 1 + 0.16 * k : 1 + 0.05 * k * Math.sin(now * 0.4 + ph));
+      z.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) rotate(${rot.toFixed(2)}deg) skewX(${sk.toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+      const r = (c) => (k * (14 + 34 * (0.5 + 0.5 * Math.sin(now * 0.45 + ph + c * 1.9)))).toFixed(1) + "%";
+      z.style.borderRadius = `${r(0)} ${r(1)} ${r(2)} ${r(3)} / ${r(4)} ${r(5)} ${r(6)} ${r(7)}`;
+    } else {  // MDMA : les zones se rapprochent du centre et battent au même rythme, coins très ronds
+      const beat = Math.pow(Math.max(0, Math.sin(now * Math.PI * 2 * 1.15)), 8);
+      const r = z.getBoundingClientRect(), cx = innerWidth / 2 - (r.left + r.width / 2), cy = innerHeight / 2 - (r.top + r.height / 2);
+      const pull = video ? 0 : 0.07 * k;
+      const sc = (video ? 1 + 0.1 * k : 1) + 0.035 * k * beat;
+      z.style.transform = `translate(${(cx * pull).toFixed(1)}px, ${(cy * pull).toFixed(1)}px) rotate(${(k * 1.6 * Math.sin(now * 0.3 + ph)).toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+      z.style.borderRadius = (k * 38).toFixed(1) + "px";
+    }
+  });
+  // le fond de la page prend la teinte de la drogue
+  const st = TYPO.state();
+  document.body.style.background = drug === "neutral" || k < 0.02 ? "" :
+    `hsl(${st.bg_hue} ${(st.bg_sat * 0.7).toFixed(0)}% ${Math.max(2, st.bg_light * 0.55).toFixed(1)}%)`;
+  return k;
+}
+
+// ---------------------------------------------------------------- l'organisme
+// ----- ouverture en neutre : la vidéo est d'abord le cerveau d'une tête de profil, reliée par des électrodes aux mots
+// du J-space ; après INTRO_HOLD s, elle grandit en INTRO_MORPH s jusqu'à sa zone, et la tête et les électrodes s'effacent.
+const INTRO_HOLD = 15, INTRO_MORPH = 30;
+// silhouette (repère 1000 x 1000, tournée vers la droite), cerveau et électrodes dans le même repère
+const HEAD = new Path2D("M300 990 C295 900 290 820 270 760 C200 700 180 600 185 480 C190 300 300 160 470 120 C620 90 740 160 770 280 C778 315 776 345 790 370 C820 420 860 455 868 478 C872 492 852 498 830 500 C820 512 826 528 818 540 C830 552 826 566 812 572 C826 584 822 600 806 606 C800 640 812 670 790 700 C760 730 700 735 650 735 C640 800 645 900 655 990 Z");
+const BRAIN = {cx: 470, cy: 345, rx: 238, ry: 170};
+const ELECTRODES = [[232, 470], [228, 360], [270, 255], [350, 175], [455, 135], [560, 135], [660, 175], [735, 245], [752, 320]];
+const ewSlots = ELECTRODES.map(() => ({word: "", flash: 0}));
+let ewTok = -2;
+function headPlacement() {  // la tête occupe la hauteur de la zone principale, centrée sur la colonne du milieu
+  const M_ = $("#main").getBoundingClientRect(), C_ = $("#center").getBoundingClientRect();
+  const sc = M_.height * 0.98 / 1000, x0 = C_.left + C_.width / 2 - 520 * sc, y0 = M_.top + M_.height * 0.01;
+  return {sc, x0, y0, X: (x) => x0 + x * sc, Y: (y) => y0 + y * sc};
+}
+function brainR(th) {  // contour du cerveau : ovale aux circonvolutions, un peu aplati dessous
+  const e = Math.hypot(Math.cos(th) / BRAIN.rx, Math.sin(th) / BRAIN.ry), base = 1 / e;
+  return base * (1 + 0.04 * Math.sin(9 * th) + 0.025 * Math.sin(17 * th + 1) - (Math.sin(th) > 0 ? 0.08 * Math.sin(th) ** 3 : 0));
+}
+function introAmount() {  // 0 : cerveau dans la tête ; 1 : vidéo à sa place habituelle
+  if (drug !== "neutral" || !M) return 1;
+  const x = Math.max(0, Math.min(1, (clock - INTRO_HOLD) / INTRO_MORPH));
+  return x * x * (3 - 2 * x);
+}
+function drawIntro(m, hp, now) {
+  const hg = fit($("#headcv"))[0], [g] = fit($("#membrane")), ew = $("#ewords");
+  hg.clearRect(0, 0, 1e4, 1e4);
+  const op = 1 - m;
+  ew.style.opacity = op; $("#net").style.opacity = m; $("#keywords").style.opacity = m;
+  if (op < 0.01) { if (ew.childElementCount) ew.innerHTML = ""; return; }
+  // la tête : silhouette sombre bordée de lumière
+  hg.save(); hg.translate(hp.x0, hp.y0); hg.scale(hp.sc, hp.sc); hg.globalAlpha = op;
+  const grd = hg.createLinearGradient(200, 0, 870, 0); grd.addColorStop(0, "#14141a"); grd.addColorStop(1, "#1d1d25");
+  hg.fillStyle = grd; hg.fill(HEAD);
+  hg.strokeStyle = "rgba(233,231,226,.55)"; hg.lineWidth = 2 / hp.sc; hg.stroke(HEAD);
+  hg.restore();
+  // les électrodes : un fil par électrode vers son mot ; le mot change avec le token, l'électrode s'allume
+  if (tokNow !== ewTok) {
+    ewTok = tokNow;
+    const t = S.tokens[tokNow], seen = new Set(ewSlots.map(x => x.word));
+    const fresh = t ? [...new Set(t.l.map(l => l[0]).filter(Boolean))].filter(w => !seen.has(w)) : [];
+    fresh.slice(0, 3).forEach((w) => { const j = Math.floor(Math.random() * ewSlots.length); ewSlots[j].word = w; ewSlots[j].flash = 1; ewSlots[j].changed = true; });
+  }
+  const bc = [hp.X(BRAIN.cx), hp.Y(BRAIN.cy)];
+  if (ew.childElementCount !== ewSlots.length) { ew.innerHTML = ""; ewSlots.forEach(() => ew.appendChild(document.createElement("span"))); }
+  g.save(); g.globalAlpha = op;
+  ewSlots.forEach((slot, j) => {
+    const [ex, ey] = [hp.X(ELECTRODES[j][0]), hp.Y(ELECTRODES[j][1])];
+    const ang = Math.atan2(ey - bc[1], ex - bc[0]), far = 1.9 + 0.25 * (j % 2);
+    const dist = Math.hypot(ex - bc[0], ey - bc[1]) * far;  // le mot est posé dans le prolongement de l'électrode
+    const wx = Math.max(60, Math.min(innerWidth - 60, bc[0] + Math.cos(ang) * dist));
+    const wy = Math.max(30, Math.min(innerHeight - 30, bc[1] + Math.sin(ang) * dist));
+    slot.flash *= 0.94;
+    g.strokeStyle = `rgba(233,231,226,${0.22 + 0.5 * slot.flash})`; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(ex, ey); g.bezierCurveTo(ex + Math.cos(ang) * 60, ey + Math.sin(ang) * 60, wx - Math.cos(ang) * 40, wy, wx, wy); g.stroke();
+    g.fillStyle = slot.flash > 0.05 ? `rgba(216,255,92,${0.4 + 0.6 * slot.flash})` : "#8a8993";
+    g.beginPath(); g.arc(ex, ey, 5 + 3 * slot.flash, 0, 7); g.fill();
+    g.strokeStyle = "rgba(233,231,226,.6)"; g.beginPath(); g.arc(ex, ey, 8, 0, 7); g.stroke();
+    const sp = ew.children[j];
+    if (sp.textContent !== slot.word) { sp.textContent = slot.word; sp.classList.remove("pop"); void sp.offsetWidth; sp.classList.add("pop"); }
+    sp.style.left = wx + "px"; sp.style.top = wy + "px";
+  });
+  g.restore();
+}
+
+// ----- l'organisme : la vidéo comme être vivant
+// Neutre : rectangle exact (après l'ouverture). Sous drogue, la boîte de la vidéo s'agrandit (image agrandie, jamais
+// coupée de travers) et sa forme devient une membrane vivante qui respire, bat avec la voix et tend des pseudopodes
+// vers ce qui l'entoure, d'abord le dernier mot qu'elle vient d'écrire.
+// LSD : membrane hérissée de lobes à symétrie de kaléidoscope qui tourne, couleurs de l'image qui dérivent,
+//       contours en écho, pseudopodes fins vers de nombreuses cibles.
+// MDMA : cellule lisse et ronde, battement de cœur ample, image réchauffée, halo rose épais, elle enveloppe.
+// Contrecoup : elle se rétracte, sa membrane se durcit en polygone, l'image se décolore.
+const ORG = {N: 240, reach: 0, lastWord: null, energy: 0};
+function rayRect(th, hw, hh) { const c = Math.abs(Math.cos(th)), s = Math.abs(Math.sin(th)); return Math.min(c > 1e-6 ? hw / c : 1e9, s > 1e-6 ? hh / s : 1e9); }
+function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
+function setOrganism(pts, filter) {  // boîte = enveloppe des points ; découpe = le contour, en coordonnées de la boîte
+  const org = $("#organism");
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  Object.assign(org.style, {left: x0 + "px", top: y0 + "px", width: (x1 - x0) + "px", height: (y1 - y0) + "px"});
+  org.style.clipPath = `path("M${pts.map(([x, y]) => (x - x0).toFixed(1) + " " + (y - y0).toFixed(1)).join(" L")} Z")`;
+  org.style.filter = filter || "";
+  return [x0, y0, x1 - x0, y1 - y0];
+}
+function organism(dt, now) {
+  const R = $("#latent").getBoundingClientRect(), cx = R.left + R.width / 2, cy = R.top + R.height / 2, hw = R.width / 2, hh = R.height / 2;
+  const e = sm ? sm.reduce((x, y) => x + y, 0) / sm.length : 0;
+  ORG.energy += (e - ORG.energy) * (1 - Math.exp(-dt / 0.12));
+  const [g, W, H] = fit($("#membrane"));
+  g.clearRect(0, 0, W, H);
+
+  // --- neutre : ouverture (cerveau dans la tête), puis rectangle
+  const m = introAmount();
+  if (drug === "neutral" || !M) {
+    const hp = headPlacement(), bcx = hp.X(BRAIN.cx), bcy = hp.Y(BRAIN.cy), pts = [];
+    for (let i = 0; i < ORG.N; i++) {
+      const th = i / ORG.N * Math.PI * 2, u = [Math.cos(th), Math.sin(th)];
+      const rb = brainR(th) * hp.sc * (1 + 0.012 * Math.sin(now * 1.1)), rr = rayRect(th, hw, hh);
+      pts.push([(bcx + u[0] * rb) * (1 - m) + (cx + u[0] * rr) * m, (bcy + u[1] * rb) * (1 - m) + (cy + u[1] * rr) * m]);
+    }
+    setOrganism(pts);
+    drawIntro(m, hp, now);
+    $("#jspace").style.opacity = m;
+    return;
+  }
+  drawIntro(1, null, now); $("#jspace").style.opacity = 1;
+
+  // --- sous drogue
+  const k = Math.min(1.3, Math.abs(LA)), pos = LA >= 0, lsd = drug === "lsd", kk = Math.min(1, k);
+  const last = $("#out").lastElementChild;
+  if (last !== ORG.lastWord) { ORG.lastWord = last; ORG.reach = 1; }
+  ORG.reach *= Math.exp(-dt / 2.2);
+  const targets = [];
+  const add = (el, w) => { if (!el) return; const r = el.getBoundingClientRect(); if (!r.width) return;
+    const tx = r.left + r.width / 2 - cx, ty = r.top + r.height / 2 - cy; targets.push({a: Math.atan2(ty, tx), d: Math.hypot(tx, ty), w}); };
+  add(last, 0.35 + 0.65 * ORG.reach); add($("#net"), 0.45); add($("#prompt .q"), 0.4); add($("#keywords"), 0.3);
+  if (lsd) { add($("#about"), 0.3); add($("#spectrum"), 0.3); }
+  const beat = Math.pow(Math.max(0, Math.sin(now * Math.PI * 2 * 1.15)), 6);
+  const grow = pos ? (lsd ? 0.3 : 0.22) * kk : -0.12 * kk;
+  const pts = [];
+  for (let i = 0; i < ORG.N; i++) {
+    const th = i / ORG.N * Math.PI * 2, rRect = rayRect(th, hw, hh);
+    let rLive;
+    if (pos) {
+      const base = Math.hypot(hw * (1 + grow * 0.6) * Math.cos(th), hh * (1 + grow * 0.5) * Math.sin(th));
+      let h = 0.035 * Math.sin(now * 0.5) + 0.3 * ORG.energy;
+      if (lsd) {
+        for (let n = 3; n <= 13; n += 2) h += (0.13 / Math.sqrt(n)) * Math.sin(n * th + now * (0.35 + 0.1 * n) + n * 1.3);
+        h += 0.11 * Math.sin(6 * th - now * 0.6) * (0.6 + 0.4 * Math.sin(now * 0.3));  // symétrie de kaléidoscope qui tourne
+      } else {
+        h += 0.04 * Math.sin(2 * th + now * 0.35) + 0.16 * beat;  // cellule ronde, battement ample
+      }
+      rLive = base * (1 + h);
+      for (const t of targets) {
+        const sig = lsd ? 0.05 : 0.3, reachD = Math.max(0, t.d - base) * (lsd ? 0.55 : 0.32);
+        rLive += reachD * t.w * (0.75 + 0.25 * Math.sin(now * 0.9 + t.a * 3)) * Math.exp(-(angDiff(th, t.a) ** 2) / (2 * sig * sig));
+      }
+    } else {
+      const sides = 7, seg = Math.PI * 2 / sides, a0 = ((th % seg) + seg) % seg - seg / 2;
+      rLive = Math.min(hw, hh) * 1.05 * Math.cos(seg / 2) / Math.cos(a0);
+    }
+    const r = rRect + (rLive - rRect) * kk;
+    pts.push([cx + Math.cos(th) * r, cy + Math.sin(th) * r]);
+  }
+  const filter = !pos ? `grayscale(${kk}) brightness(${1 - 0.3 * kk})`
+    : lsd ? `hue-rotate(${(Math.sin(now * 0.25) * 70 * kk).toFixed(1)}deg) saturate(${1 + 0.6 * kk})`
+          : `sepia(${0.3 * kk}) saturate(${1 + 0.35 * kk}) hue-rotate(${-18 * kk}deg) brightness(${1 + 0.06 * kk * beat})`;
+  setOrganism(pts, filter);
+  if (kk < 0.02) return;
+  // membrane
+  const ring = (sc) => { g.beginPath(); pts.forEach(([x, y], i) => { const X = cx + (x - cx) * sc, Y = cy + (y - cy) * sc; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); };
+  if (pos && lsd) {
+    const h0 = (now * 40) % 360;
+    for (const [sc, al] of [[1.10, 0.18], [1.05, 0.35], [1, 0.9]]) {  // contours en écho
+      const grd = g.createLinearGradient(cx - hw * 2, cy - hh * 2, cx + hw * 2, cy + hh * 2);
+      for (let j = 0; j <= 4; j++) grd.addColorStop(j / 4, `hsla(${(h0 + j * 80 + sc * 200) % 360} 95% 65% / ${al * kk})`);
+      g.strokeStyle = grd; g.lineWidth = sc === 1 ? 2.5 : 1.5; g.shadowColor = `hsla(${h0} 100% 70% / ${kk})`; g.shadowBlur = sc === 1 ? 22 : 8;
+      ring(sc); g.stroke();
+    }
+  } else if (pos) {
+    g.strokeStyle = `rgba(255,150,190,${(0.6 + 0.4 * beat) * kk})`; g.lineWidth = 4 + 9 * beat; g.shadowColor = "rgba(255,90,160,.95)"; g.shadowBlur = 34 + 40 * beat;
+    ring(1); g.stroke();
+  } else {
+    g.strokeStyle = `rgba(170,180,190,${0.6 * kk})`; g.lineWidth = 1; ring(1); g.stroke();
+  }
+  g.shadowBlur = 0;
+}
+
+// ---------------------------------------------------------------- espace latent (zone réservée, visuel à définir)
+function drawLatent() { fit($("#latent canvas"))[0].clearRect(0, 0, 1e4, 1e4); }
+
+// ---------------------------------------------------------------- spectre du son projeté
+// Spectre en miroir autour d'une ligne médiane : fréquences en échelle log de gauche (graves) à droite (aigus).
+// Gain automatique : l'échelle suit le niveau récent du son (crête glissante, plage de 48 dB), donc elle ne sature
+// pas ; chaque bande retombe doucement (maintien de crête), et les images précédentes s'effacent en traînée.
+let actx = null, analyser = null, fbins = null, sm = null, peakDb = -40;
+const BANDS = 72, FMIN = 50, FMAX = 11000, RANGE = 48;
+function audioGraph() {
+  if (actx) { actx.resume(); return; }
+  actx = new AudioContext();
+  const src = actx.createMediaElementSource($("#audio"));
+  analyser = actx.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0.5;
+  src.connect(analyser); analyser.connect(actx.destination);
+  fbins = new Float32Array(analyser.frequencyBinCount); sm = new Float32Array(BANDS);
+}
+function drawSpectrum(dt) {
+  const cv = $("#spectrum canvas"), [g, W, H] = fit(cv);
+  if (!analyser || !M) { g.clearRect(0, 0, W, H); return; }
+  if (!playing) return;  // en pause : l'image reste figée
+  analyser.getFloatFrequencyData(fbins);
+  const n = fbins.length, hz = actx.sampleRate / 2 / n, db = new Float32Array(BANDS);
+  let frameMax = -160;
+  for (let b = 0; b < BANDS; b++) {
+    const f0 = FMIN * Math.pow(FMAX / FMIN, b / BANDS), f1 = FMIN * Math.pow(FMAX / FMIN, (b + 1) / BANDS);
+    let m = -160;
+    for (let k = Math.floor(f0 / hz); k <= Math.min(n - 1, Math.ceil(f1 / hz)); k++) m = Math.max(m, fbins[k]);
+    db[b] = m; frameMax = Math.max(frameMax, m);
+  }
+  peakDb = Math.max(frameMax, peakDb - 6 * dt, -70);  // crête glissante : retombe de 6 dB/s
+  for (let b = 0; b < BANDS; b++) {
+    const v = Math.max(0, Math.min(1, (db[b] - (peakDb - RANGE)) / RANGE));
+    sm[b] = Math.max(v * v, sm[b] - 1.6 * dt);  // retombée douce de chaque bande
+  }
+  g.fillStyle = "rgba(10,10,12,0.28)"; g.fillRect(0, 0, W, H);  // traînée : les images précédentes s'estompent
+  const mid = H / 2, x = (b) => b / (BANDS - 1) * W, amp = H * 0.44;
+  g.beginPath(); g.moveTo(0, mid);
+  for (let b = 0; b < BANDS; b++) g.lineTo(x(b), mid - sm[b] * amp);
+  for (let b = BANDS - 1; b >= 0; b--) g.lineTo(x(b), mid + sm[b] * amp);
+  g.closePath();
+  g.fillStyle = "rgba(233,231,226,0.16)"; g.fill();
+  g.strokeStyle = "rgba(233,231,226,0.85)"; g.lineWidth = 1.2;
+  g.beginPath(); for (let b = 0; b < BANDS; b++) b ? g.lineTo(x(b), mid - sm[b] * amp) : g.moveTo(0, mid - sm[b] * amp); g.stroke();
+  g.beginPath(); for (let b = 0; b < BANDS; b++) b ? g.lineTo(x(b), mid + sm[b] * amp) : g.moveTo(0, mid + sm[b] * amp); g.stroke();
+}
+
+// ---------------------------------------------------------------- boucle
+function frame(now) {
+  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  if (S) {
+    if (playing) {
+      pulse = Math.min(1, pulse + dt * 2.2);
+      if (M) clock = $("#audio").currentTime;  // l'audio donne l'heure : mots, vidéo et dose suivent le son généré
+      else clock += dt;
+    }
+    const p = M ? Math.min(1, clock / M.duration) : idx / S.words.length, a = alphaAt(p);
+    if (playing) TYPO.update(a, dt);
+    const st = TYPO.state();
+    if (playing) {
+      if (M) {
+        const au = $("#audio"), v = $("#organism video");
+        if (Math.abs(v.currentTime - clock) > 0.15) v.currentTime = clock;
+        while (idx < S.words.length && M.times[idx] <= clock) addWord(idx++, st);
+        if (au.ended) { playing = false; v.pause(); }
+      } else {
+        while (playing && clock >= nextAt) {
+          if (idx >= S.words.length) { playing = false; break; }
+          addWord(idx++, st); nextAt = clock + 1 / RATE / st.rate;
+        }
+      }
+    }
+    $("#out").style.lineHeight = (1.5 * st.lead / 1.32).toFixed(3);
+    $("#output").style.background = drug === "neutral" ? "transparent" : `hsla(${st.bg_hue} ${st.bg_sat}% ${st.bg_light}% / .55)`;
+    styleOutput();
+    const kL = warpLayout(a, dt, clock); organism(dt, clock); buildJspace(); drawJspace(kL, st, clock);
+    drawDose(p, a); drawAbout(p); drawKeywords(p, a); drawNet(a); drawLatent(); drawSpectrum(dt);
+  }
+  requestAnimationFrame(frame);
+}
+
+function start(d) {
+  drug = d; LA = 0; jsTok = -2; ewTok = -2; ewSlots.forEach(x => { x.word = ""; x.flash = 0; }); $("#jspace").innerHTML = ""; idx = 0; clock = 0; nextAt = 0; tokNow = -1; kwPhase = undefined;
+  TYPO.setDrug(d); TYPO.reset();
+  if (sm) sm.fill(0); peakDb = -40; aboutKey = null;
+  $("#out").innerHTML = ""; $("#keywords").innerHTML = "";
+  document.querySelectorAll("#drugs button").forEach(b => b.classList.toggle("on", b.dataset.drug === d));
+  playing = true;
+  if (M) { audioGraph(); const au = $("#audio"), v = $("#organism video"); au.currentTime = 0; v.currentTime = 0; au.play(); v.play(); }
+  const [g, W, H] = fit($("#spectrum canvas")); g.clearRect(0, 0, W, H);
+}
+function setPlaying(on) {
+  playing = on && idx < S.words.length;
+  if (M) { const au = $("#audio"), v = $("#organism video"); if (playing) { au.play(); v.play(); } else { au.pause(); v.pause(); } }
+}
+
+async function load(id) {
+  S = await (await fetch(`data/${id}.json`)).json();
+  $("#prompt .q").textContent = S.question; $("#prompt .ctx").textContent = S.context; wordEntropy();
+  $("#out").innerHTML = ""; idx = 0; clock = 0; setPlaying(false);
+  await useMedia(mediaIdx);
+}
+
+(async () => {
+  INDEX = await (await fetch("data/index.json")).json();
+  await load(INDEX.sessions[0]);
+  document.querySelectorAll("#drugs button").forEach(b => b.onclick = () => start(b.dataset.drug));
+  // touches discrètes (aucun texte à l'écran) : 1-6 choisit le texte, espace met en pause, V change de vidéo/son,
+  // L montre les zones
+  addEventListener("keydown", async (e) => {
+    if (e.key >= "1" && e.key <= String(INDEX.sessions.length)) { await load(INDEX.sessions[+e.key - 1]); }
+    else if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
+    else if (e.key.toLowerCase() === "v" && S.media?.length) { setPlaying(false); mediaIdx++; await useMedia(mediaIdx); idx = 0; clock = 0; $("#out").innerHTML = ""; }
+    else if (e.key.toLowerCase() === "l") document.body.classList.toggle("layout");
+  });
+  requestAnimationFrame((n) => { last = n; requestAnimationFrame(frame); });
+})();
+</script>
+</body>
+</html>

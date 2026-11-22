@@ -30,3 +30,6 @@ out_sana_deforum/
 .venv*/
 fontlab/data/
 typolab/data/
+interface/data/
+interface/media/
+interface/mock/*.png
