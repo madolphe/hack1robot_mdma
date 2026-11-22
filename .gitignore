@@ -33,3 +33,4 @@ typolab/data/
 interface/data/
 interface/media/
 interface/mock/*.png
+interface/dist/
