@@ -41,7 +41,7 @@
 <canvas id="fx"></canvas>
 <div id="prompt"><div class="q"></div></div>
 <div id="output"><div class="hd"></div><div id="wrap"><div id="out"></div></div></div>
-<div id="drugs"><button data-drug="cocaine">cocaïne</button><button data-drug="mdma">mdma</button><button data-drug="neutral">neutre</button></div>
+<div id="drugs"><button data-drug="champignons">champignons</button><button data-drug="mdma">mdma</button><button data-drug="neutral">neutre</button></div>
 <div id="paused">[ pause ]</div>
 <audio id="audio" preload="auto"></audio>
 
@@ -55,7 +55,7 @@
    Données : data/experiences.json -> data/exp_<id>.json (prepare_md.py). Clavier : espace = pause, entrée = reset. */
 const $ = (s) => document.querySelector(s);
 const PRE_PROMPT = 6.5, IV_IN = 1.0, IV_PUSH = 3.4, IV_HOLD = .6, ZOOM_AT = 5, ZOOM_DUR = 7;
-const DRUGCOL = {cocaine: [205, 232, 255], lsd: [150, 110, 255], mdma: [255, 92, 150], neutral: [80, 225, 230]};
+const DRUGCOL = {champignons: [170, 225, 120], cocaine: [205, 232, 255], lsd: [150, 110, 255], mdma: [255, 92, 150], neutral: [80, 225, 230]};
 const MON = {x: 880, y: 90, w: 980, h: 600}, VID = {x: 1105, y: 140, w: 530, h: 500}, LOG = {x: 1080, y: 738, w: 780, h: 302};
 const DY = 70, PORT = {x: 352, y: 505 + DY};   // le robot est dessiné décalé de DY vers le bas
 let EXPS = {}, E = null, drug = "neutral", phase = "idle", pre = 0, clock = 0, last = 0, idx = 0, LA = 0, paused = false, anim = 0, born = -9;
@@ -266,7 +266,7 @@ function rayRect(th, hw, hh) { const c = Math.abs(Math.cos(th)), s = Math.abs(Ma
 function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
 function videoWindow(cam, m, now, dt) {
   const org = $("#organism"), c = [cam.X(VID.x + VID.w / 2), cam.Y(VID.y + VID.h / 2)], hw = VID.w / 2 * cam.s, hh = VID.h / 2 * cam.s;
-  const k = Math.min(1.3, Math.abs(LA)), pos = LA >= 0, lsd = drug === "lsd", coke = drug === "cocaine", kk = drug === "neutral" ? 0 : Math.min(1, k);
+  const k = Math.min(1.3, Math.abs(LA)), pos = LA >= 0, lsd = drug === "lsd", coke = drug === "cocaine", shroom = drug === "champignons", kk = drug === "neutral" ? 0 : Math.min(1, k);
   const lastW = $("#out").querySelector(".w:last-of-type"); if (lastW !== ORG.lastWord) { ORG.lastWord = lastW; ORG.reach = 1; } ORG.reach *= Math.exp(-dt / 2.2);
   const targets = []; if (lastW) { const r = lastW.getBoundingClientRect(); if (r.width) { const tx = r.left + r.width / 2 - c[0], ty = r.top + r.height / 2 - c[1];
     targets.push({a: Math.atan2(ty, tx), d: Math.hypot(tx, ty), w: .35 + .65 * ORG.reach}); } }
@@ -276,10 +276,11 @@ function videoWindow(cam, m, now, dt) {
     let r = base;
     if (kk > 0 && pos) { let h = .035 * Math.sin(now * .5) + .25 * energy;
       if (lsd) { for (let n = 3; n <= 13; n += 2) h += (.13 / Math.sqrt(n)) * Math.sin(n * th + now * (.35 + .1 * n) + n * 1.3); h += .11 * Math.sin(6 * th - now * .6); }
+      else if (shroom) h += .05 * Math.sin(3 * th + now * .4) + .03 * Math.sin(7 * th - now * .7) + .014 * Math.sin(17 * th + now * 1.3) + .035 * Math.sin(now * .9);   // bord organique qui respire
       else if (coke) h += .016 * Math.sin(29 * th + now * 31) + .011 * Math.sin(53 * th - now * 47) + .05 * Math.pow(Math.abs(Math.sin(now * 6.5)), 8);   // cadre net qui vibre
       else h += .04 * Math.sin(2 * th + now * .35) + .14 * beat;
       let live = base * (1 + h);
-      for (const t of targets) { const sig = lsd ? .05 : coke ? .1 : .3; live += Math.max(0, t.d - base) * (lsd ? .45 : coke ? .3 : .25) * t.w * Math.exp(-(angDiff(th, t.a) ** 2) / (2 * sig * sig)); }
+      for (const t of targets) { const sig = lsd ? .05 : coke ? .1 : shroom ? .18 : .3; live += Math.max(0, t.d - base) * (lsd ? .45 : coke ? .3 : .25) * t.w * Math.exp(-(angDiff(th, t.a) ** 2) / (2 * sig * sig)); }
       r = lerp(base, live, kk * Math.max(.3, m)); }
     else if (kk > 0) { const sides = 7, seg = Math.PI * 2 / sides, a0 = ((th % seg) + seg) % seg - seg / 2; r = lerp(base, Math.min(hw, hh) * 1.15 * Math.cos(seg / 2) / Math.cos(a0), kk); }
     pts.push([c[0] + u[0] * r, c[1] + u[1] * r]);
@@ -288,17 +289,26 @@ function videoWindow(cam, m, now, dt) {
   Object.assign(org.style, {left: x0 + "px", top: y0 + "px", width: x1 - x0 + "px", height: y1 - y0 + "px"});
   org.style.clipPath = `path("M${pts.map(([x, y]) => (x - x0).toFixed(1) + " " + (y - y0).toFixed(1)).join(" L")} Z")`;
   org.style.filter = !pos && kk > 0 ? `grayscale(${kk * .8}) brightness(${1 - .25 * kk})` : lsd && kk > 0 ? `hue-rotate(${(Math.sin(now * .25) * 70 * kk).toFixed(1)}deg) saturate(${1 + .6 * kk})`
+    : shroom && kk > 0 ? `hue-rotate(${(Math.sin(now * .15) * 40 * kk).toFixed(1)}deg) saturate(${1 + .5 * kk}) contrast(${1 + .1 * kk})`
     : coke && kk > 0 ? `contrast(${1 + .35 * kk}) saturate(${1 + .5 * kk}) brightness(${1 + .08 * kk})`
     : kk > 0 ? `sepia(${.25 * kk}) saturate(${1 + .3 * kk}) hue-rotate(${-15 * kk}deg)` : "";
-  return {pts, c, kk, pos, lsd, coke, beat};
+  return {pts, c, kk, pos, lsd, coke, shroom, beat};
 }
 function drawMembrane(g, win, now, col) {
-  const {pts, c, kk, pos, lsd, coke, beat} = win;
+  const {pts, c, kk, pos, lsd, coke, shroom, beat} = win;
   const ring = (sc) => { g.beginPath(); pts.forEach(([x, y], i) => { const X = c[0] + (x - c[0]) * sc, Y = c[1] + (y - c[1]) * sc; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); };
   if (kk < .02) { g.strokeStyle = `rgba(${col},.4)`; g.lineWidth = 1; ring(1); g.stroke(); return; }
   if (pos && lsd) { const h0 = (now * 40) % 360;
     for (const [sc, al] of [[1.10, .18], [1.05, .35], [1, .9]]) { g.strokeStyle = `hsla(${(h0 + sc * 300) % 360} 95% 65% / ${al * kk})`; g.lineWidth = sc === 1 ? 2.5 : 1.5;
       g.shadowColor = `hsla(${h0} 100% 70% / ${kk})`; g.shadowBlur = sc === 1 ? 22 : 8; ring(sc); g.stroke(); } }
+  else if (pos && shroom) {   // mycélium : un bord vert-mousse d'où poussent des filaments
+    const hue = 95 + 45 * Math.sin(now * .2);
+    g.strokeStyle = `hsla(${hue} 70% 62% / ${.85 * kk})`; g.lineWidth = 2.5; g.shadowColor = `hsla(${hue} 80% 60% / .9)`; g.shadowBlur = 22; ring(1); g.stroke();
+    g.shadowBlur = 6; g.lineWidth = 1;
+    for (let i = 0; i < pts.length; i += 6) { const [x, y] = pts[i], dx = x - c[0], dy = y - c[1], d = Math.hypot(dx, dy) || 1, nx = dx / d, ny = dy / d;
+      const len = kk * (14 + 26 * (.5 + .5 * Math.sin(i * 1.7 + now * .6))), bend = 12 * Math.sin(i * .9 + now * .8);
+      g.strokeStyle = `hsla(${(hue + i * 1.3) % 360} 65% 70% / ${.55 * kk})`; g.beginPath(); g.moveTo(x, y);
+      g.quadraticCurveTo(x + nx * len * .5 - ny * bend, y + ny * len * .5 + nx * bend, x + nx * len, y + ny * len); g.stroke(); } }
   else if (pos && coke) { const fl = .7 + .3 * Math.random();   // givre électrique, qui scintille
     g.strokeStyle = `rgba(120,220,255,${.45 * kk * fl})`; g.lineWidth = 1; g.shadowColor = "rgba(200,240,255,.9)"; g.shadowBlur = 10; ring(1.025); g.stroke();
     g.strokeStyle = `rgba(245,250,255,${.95 * kk * fl})`; g.lineWidth = 1.8; g.shadowBlur = 18; ring(1); g.stroke(); }
