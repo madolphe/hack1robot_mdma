@@ -13,8 +13,8 @@
   #stage { z-index:0; } #fx { z-index:3; pointer-events:none; }
   #organism { position:fixed; z-index:2; pointer-events:none; display:none; }
   #organism video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-  #prompt { position:fixed; left:3.6vw; width:40vw; top:7.4vh; z-index:4; pointer-events:none; font-family:"Roboto Mono"; font-weight:350;
-            font-size:1.75vh; line-height:1.5; color:#cfd3da; }
+  #prompt { position:fixed; left:3.6vw; width:40vw; top:6.6vh; z-index:4; pointer-events:none; font-family:"Roboto Mono"; font-weight:350;
+            font-size:1.6vh; line-height:1.5; color:#cfd3da; }
   #prompt .q::before { content:"> "; color:var(--acc); }
   #prompt .caret { display:inline-block; width:.55em; height:1.05em; background:var(--acc); vertical-align:-.18em; margin-left:.1em; animation:blink 1s steps(1) infinite; }
   @keyframes blink { 50% { opacity:0; } }
@@ -57,7 +57,7 @@ const $ = (s) => document.querySelector(s);
 const PRE_PROMPT = 6.5, IV_IN = 1.0, IV_PUSH = 3.4, IV_HOLD = .6, ZOOM_AT = 5, ZOOM_DUR = 7;
 const DRUGCOL = {champignons: [140, 255, 70], cocaine: [225, 242, 255], lsd: [175, 120, 255], mdma: [255, 55, 165], neutral: [40, 215, 255]};   // saturées : lisibles au vidéoprojecteur
 const MON = {x: 880, y: 90, w: 980, h: 600}, VID = {x: 1105, y: 140, w: 530, h: 500}, LOG = {x: 1080, y: 738, w: 780, h: 302};
-const DY = 70, PORT = {x: 352, y: 505 + DY};   // le robot est dessiné décalé de DY vers le bas
+const DY = 120, PORT = {x: 352, y: 505 + DY};   // le robot est dessiné décalé de DY vers le bas
 let EXPS = {}, E = null, drug = "neutral", phase = "idle", pre = 0, clock = 0, last = 0, idx = 0, LA = 0, paused = false, anim = 0, born = -9;
 let actx = null, analyser = null, fbins = new Uint8Array(512), energy = 0;
 const sources = new Map(), blobs = {};
@@ -128,18 +128,12 @@ function drawRoom(g, now, col, act) {
   for (let i = 0; i < 4; i++) { g.fillStyle = "#07080a"; rr(g, -128, -42 + i * 11, 34, 4, 2); g.fill(); }   // ouïes
   g.restore();
   g.strokeStyle = "rgba(240,244,250,.7)"; g.lineWidth = 2; g.stroke(shell);
-  // prise au sommet du crâne, d'où part le câble vers l'écran
-  g.fillStyle = "#2a2e35"; g.beginPath(); g.ellipse(15, -156, 16, 8, 0, 0, 7); g.fill(); g.strokeStyle = "rgba(235,240,248,.6)"; g.lineWidth = 1.2; g.stroke();
   // module latéral (capteur)
   const mg = g.createLinearGradient(-90, -25, -20, 45); mg.addColorStop(0, "#8d939e"); mg.addColorStop(1, "#3a3e47");
   g.fillStyle = mg; g.beginPath(); g.arc(-55, 12, 34, 0, 7); g.fill();
   g.strokeStyle = "rgba(0,0,0,.6)"; g.lineWidth = 3; g.beginPath(); g.arc(-55, 12, 26, 0, 7); g.stroke();
   g.strokeStyle = `rgba(${col},${.55 * glow})`; g.lineWidth = 1.5; g.beginPath(); g.arc(-55, 12, 17, -1.2 + now * .8, 2.6 + now * .8); g.stroke();
   g.fillStyle = `rgba(${col},${.8 * glow})`; g.beginPath(); g.arc(-55, 12, 3.5, 0, 7); g.fill();
-  // ailette de capteur à l'arrière du crâne
-  g.fillStyle = "#5c626d"; g.beginPath(); g.moveTo(-66, -140); g.lineTo(-48, -174); g.lineTo(-26, -172); g.lineTo(-30, -147); g.closePath(); g.fill();
-  g.strokeStyle = "rgba(200,208,222,.25)"; g.lineWidth = 1; g.stroke();
-  g.fillStyle = `rgba(${col},${.35 + .55 * (Math.sin(now * 1.6) > .6 ? 1 : 0)})`; g.beginPath(); g.arc(-40, -165, 2.5, 0, 7); g.fill();
   // plaque de verre du visage
   const face = new Path2D();
   face.moveTo(58, -108); face.bezierCurveTo(112, -90, 140, -45, 143, 0); face.bezierCurveTo(146, 40, 136, 70, 118, 92);
@@ -157,6 +151,39 @@ function drawRoom(g, now, col, act) {
   const u = (now * .6) % 1, px = 80 + 60 * u, py = -8 + (-12 * 2 * u * (1 - u)) + 6 * u * u;
   g.fillStyle = `rgba(255,255,255,${.9 * blink})`; g.beginPath(); g.arc(px, py, 2.2, 0, 7); g.fill();
   g.restore();
+  // casque « lecteur de pensées » : passoire, entonnoir, tige et anneau de fil, bornes ; le câble part de la borne de droite
+  const dome = new Path2D(); dome.ellipse(0, -70, 152, 98, 0, Math.PI, 2 * Math.PI); dome.closePath();
+  const dmg = g.createLinearGradient(-130, -170, 120, -60); dmg.addColorStop(0, "#e2e6ec"); dmg.addColorStop(.5, "#9aa1ac"); dmg.addColorStop(1, "#555b66");
+  g.fillStyle = dmg; g.fill(dome);
+  g.save(); g.clip(dome);
+  for (let k = 0; k < 6; k++) { const y = -84 - k * 15, hw = 152 * Math.sqrt(Math.max(0, 1 - ((y + 70) / 98) ** 2)) - 12;
+    for (let x = -hw + (k % 2) * 8; x <= hw; x += 16) { g.fillStyle = "#23262c"; g.beginPath(); g.ellipse(x, y, 3.2, 2.3, 0, 0, 7); g.fill();
+      g.fillStyle = "rgba(255,255,255,.35)"; g.beginPath(); g.ellipse(x + .8, y + 1.6, 2.4, .8, 0, 0, 7); g.fill(); } }
+  const shine = g.createRadialGradient(-50, -140, 4, -50, -140, 90); shine.addColorStop(0, "rgba(255,255,255,.45)"); shine.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = shine; g.fillRect(-160, -180, 320, 120);
+  g.restore();
+  g.strokeStyle = "rgba(245,248,252,.8)"; g.lineWidth = 2; g.stroke(dome);
+  const rim = g.createLinearGradient(-150, 0, 150, 0); rim.addColorStop(0, "#c9ced6"); rim.addColorStop(.5, "#f2f4f7"); rim.addColorStop(1, "#7d838e");
+  g.fillStyle = rim; g.beginPath(); g.ellipse(0, -70, 158, 13, 0, 0, 7); g.fill(); g.strokeStyle = "rgba(60,64,72,.8)"; g.lineWidth = 1.2; g.stroke();
+  // bornes (cylindres à capuchon coloré) piquées dans la passoire
+  const posts = [[-128, -112, -2.3], [-78, -150, -1.9], [72, -152, -1.25], [124, -116, -.85], [146, -84, -.45]];
+  posts.forEach(([x, y, a], i) => { g.save(); g.translate(x, y); g.rotate(a + Math.PI / 2);
+    g.fillStyle = "#e8ebef"; rr(g, -6, -2, 12, -16, 3); g.fill(); g.strokeStyle = "rgba(60,64,72,.7)"; g.lineWidth = 1; g.stroke();
+    const on = .6 + .4 * Math.min(1, energy * 2) * (.5 + .5 * Math.sin(now * 7 + i * 2.1));
+    g.shadowColor = `rgba(${col},1)`; g.shadowBlur = 8 + 10 * on; g.fillStyle = `rgba(${col},${on})`; rr(g, -7, -18, 14, -9, 3); g.fill(); g.restore(); });
+  // entonnoir au sommet
+  const fg3 = g.createLinearGradient(-60, 0, 60, 0); fg3.addColorStop(0, "#aeb4be"); fg3.addColorStop(.45, "#f0f2f5"); fg3.addColorStop(1, "#6e7480");
+  g.fillStyle = fg3; g.beginPath(); g.moveTo(-34, -164); g.lineTo(34, -164); g.lineTo(58, -206); g.lineTo(-58, -206); g.closePath(); g.fill();
+  g.strokeStyle = "rgba(60,64,72,.7)"; g.lineWidth = 1.2; g.stroke();
+  g.fillStyle = "#d9dde3"; g.beginPath(); g.ellipse(0, -206, 58, 10, 0, 0, 7); g.fill(); g.stroke();
+  g.fillStyle = "#3a3e46"; g.beginPath(); g.ellipse(0, -206, 50, 7, 0, 0, 7); g.fill();
+  // tige, anneau de fil et haubans jusqu'au bord de la passoire
+  g.strokeStyle = `rgba(${col},.95)`; g.lineWidth = 5; g.lineCap = "round"; g.beginPath(); g.moveTo(0, -206); g.lineTo(0, -252); g.stroke();
+  g.strokeStyle = "rgba(225,180,130,.85)"; g.lineWidth = 2; g.beginPath(); g.ellipse(0, -244, 82, 14, 0, 0, 7); g.stroke();
+  for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; g.beginPath(); g.moveTo(0, -244); g.lineTo(82 * Math.cos(a), -244 + 14 * Math.sin(a)); g.stroke(); }
+  g.strokeStyle = "rgba(235,225,210,.35)"; g.lineWidth = 1;
+  for (const [ax, bx] of [[-78, -140], [-45, -95], [40, 90], [76, 140]]) { g.beginPath(); g.moveTo(ax, -244 + 7); g.quadraticCurveTo((ax + bx) / 2, -170, bx, -78); g.stroke(); }
+  g.save(); g.shadowColor = `rgba(${col},1)`; g.shadowBlur = 16; g.fillStyle = `rgb(${col})`; g.beginPath(); g.arc(0, -258, 8, 0, 7); g.fill(); g.restore();
   g.restore();
   // bureau
   g.fillStyle = "#2a2e35"; g.fillRect(150, 875, 34, 300); g.fillRect(1180, 875, 34, 300);
@@ -190,7 +217,7 @@ function drawRoom(g, now, col, act) {
 
 // ------------------------------------------------------------ le câble tête -> écran, et les données qui y passent
 function drawCable(g, now, col, live) {
-  const a = [440, 168 + DY], b = [620, 190], c = [720, 430], d = [MON.x, 360];   // part de la prise au sommet du crâne
+  const a = [560, 230 + DY], b = [660, 250], c = [760, 430], d = [MON.x, 360];   // part de la borne de droite du casque
   const P = (u) => { const v = 1 - u; return [0, 1].map(k => v * v * v * a[k] + 3 * v * v * u * b[k] + 3 * v * u * u * c[k] + u * u * u * d[k]); };
   g.lineCap = "round";
   for (const [w, s] of [[9, "#4a4f59"], [3, `rgba(${col},.75)`]]) { g.strokeStyle = s; g.lineWidth = w; g.beginPath();
@@ -206,7 +233,7 @@ function drawSyringe(g, now, t, out, col) {
   const appear = smooth(t / IV_IN), push = smooth((t - IV_IN) / IV_PUSH), away = smooth(out);
   const sx = 96 - 70 * away, y0 = 210, bw = 62, bh = 270, x0 = sx - bw / 2, tipY = y0 + bh + 46;
   g.save(); g.globalAlpha = Math.min(appear * 1.4, 1 - away);
-  g.strokeStyle = "rgba(160,170,190,.35)"; g.lineWidth = 2; g.beginPath(); g.moveTo(sx, y0 - 80); g.lineTo(sx, y0 - 10); g.stroke();
+  g.strokeStyle = "rgba(160,170,190,.35)"; g.lineWidth = 2; g.beginPath(); g.moveTo(sx, y0 - 30); g.lineTo(sx, y0 - 10); g.stroke();
   const liqTop = y0 + bh * push, lg = g.createLinearGradient(0, liqTop, 0, y0 + bh);
   lg.addColorStop(0, `rgba(${col},.95)`); lg.addColorStop(1, `rgba(${col},.5)`);
   g.fillStyle = lg; g.fillRect(x0 + 4, liqTop, bw - 8, Math.max(0, y0 + bh - liqTop));
