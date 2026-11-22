@@ -45,9 +45,12 @@ def parse_md(path: Path) -> dict:
     prev_text = ""
     for b in blocks:
         t0, t1 = [ts(x) for x in re.match(r"([\d:.]+) → ([\d:.]+)", b).groups()]
-        phase = re.search(r"phase « (.*?) »", b).group(1)
-        d = float(re.search(r"force perçue d = ([\d.]+)", b).group(1))
-        profile = re.search(r"\*\*Profil de phase\*\* : (\w+)", b).group(1)
+        phase = re.search(r"phase « (.*?) »", b)
+        phase = phase.group(1) if phase else ""          # run sobre : ni phase ni dose
+        d = re.search(r"force perçue d = ([\d.]+)", b)
+        d = float(d.group(1)) if d else 0.0
+        profile = re.search(r"\*\*Profil de phase\*\* : (\w+)", b)
+        profile = profile.group(1) if profile else "neutre"
         text = re.search(r"\*\*Texte écrit par le modèle\*\* \(tokens [^)]*\) : « (.*?) »\n- \*\*Mots lus", b, re.S).group(1)
         words = [[w.strip(), float(p)] for w, p in re.findall(r"([^,]+?) ([\d.]+)(?:,|$)", re.search(r"\*\*Mots lus \(J-lens\), avec poids\*\* : (.*)", b).group(1))]
         lyric = re.search(r"\*\*Paroles\*\* : « (.*?) »", b)
@@ -69,7 +72,8 @@ def parse_md(path: Path) -> dict:
                 continue
             out_words.append({"w": x, "nl": nl, "t": round(t0 + (t1 - t0) * j / n, 3)})
             j, nl = j + 1, 0
-    return {"drug": drug.group(1) if drug else "neutral", "prompt": consigne.group(1).strip() if consigne else "",
+    drug = drug.group(1) if drug and drug.group(1) != "aucune" else "neutral"
+    return {"drug": drug, "prompt": consigne.group(1).strip() if consigne else "",
             "ctx": "", "duration": slices[-1]["t1"], "words": out_words, "slices": slices}
 
 
