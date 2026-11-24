@@ -20,3 +20,17 @@ vendor/
 .zshrc
 .claude/*
 .gradio/
+mac/out/
+.env
+.env.*
+.DS_Store
+*.log
+.venv-*/
+out_sana_deforum/
+.venv*/
+fontlab/data/
+typolab/data/
+interface/data/
+interface/media/
+interface/mock/*.png
+interface/dist/

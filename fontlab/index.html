@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>hack1robo · labo de typo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Recursive:slnt,wght,CASL,CRSV,MONO@-15..0,300..1000,0..1,0..1,0..1&family=Roboto+Flex:opsz,slnt,wdth,wght,GRAD,XTRA@8..144,-10..0,25..151,100..1000,-200..150,323..603&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0d0d10; --panel:#16161b; --line:#26262e; --ink:#e8e6e1; --mute:#8b8a93; --acc:#d8ff5c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.4 "Recursive", system-ui, sans-serif;
+         font-variation-settings:'MONO' 0, 'CASL' 0; height:100vh; display:grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr auto; }
+  header { grid-column: 1 / 3; display:flex; gap:14px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:14px; margin:0 8px 0 0; font-variation-settings:'MONO' 1, 'wght' 700; letter-spacing:.04em; }
+  header label { color:var(--mute); display:flex; gap:6px; align-items:center; }
+  select, input[type=number] { background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:4px; padding:3px 6px; font:inherit; }
+  main { position:relative; display:flex; align-items:center; justify-content:center; padding:16px; min-height:0; }
+  #stage { position:relative; width:100%; max-height:100%; aspect-ratio:16/9; background:#000; overflow:hidden; border-radius:4px; }
+  #stage img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; }
+  #textwrap { position:absolute; left:6%; right:6%; bottom:9%; text-align:center; pointer-events:none; }
+  #text { display:inline; color:#fff; line-height:1.15; }
+  #text span { display:inline-block; white-space:pre; will-change:transform, opacity; }
+  #hud { position:absolute; top:10px; left:12px; font-variation-settings:'MONO' 1; font-size:11px; color:#fffc; text-shadow:0 1px 2px #000; }
+  aside { grid-row: 2 / 4; grid-column: 2; background:var(--panel); border-left:1px solid var(--line); overflow:auto; padding:12px 14px; }
+  aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--mute); margin:16px 0 6px; font-variation-settings:'MONO' 1; }
+  .tabs { display:flex; gap:4px; margin-bottom:6px; }
+  .tabs button { flex:1; }
+  button { background:#22222a; color:var(--ink); border:1px solid var(--line); border-radius:4px; padding:5px 8px; font:inherit; cursor:pointer; }
+  button.on { background:var(--acc); color:#111; border-color:var(--acc); }
+  .row { display:grid; grid-template-columns: 92px 1fr 46px; gap:8px; align-items:center; margin:3px 0; }
+  .row span:first-child { color:var(--mute); }
+  .row output { text-align:right; font-variation-settings:'MONO' 1; font-size:11px; }
+  input[type=range] { width:100%; accent-color: var(--acc); }
+  footer { grid-column:1; padding:8px 16px 12px; border-top:1px solid var(--line); }
+  #transport { display:flex; gap:10px; align-items:center; }
+  #scrub { flex:1; }
+  #phasebar { position:relative; height:14px; margin-top:8px; border-radius:3px; overflow:hidden; background:var(--panel); display:flex; }
+  #phasebar div { height:100%; font-size:9px; color:#000c; padding-left:4px; white-space:nowrap; overflow:hidden; font-variation-settings:'MONO' 1; }
+  #cursor { position:absolute; top:0; bottom:0; width:2px; background:#fff; }
+  .hint { color:var(--mute); font-size:11px; }
+  #readout { font-variation-settings:'MONO' 1; font-size:11px; color:var(--mute); min-width:300px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LABO DE TYPO</h1>
+  <label>run <select id="run"></select></label>
+  <label>drogue <select id="drug"></select></label>
+  <label>intensité <input id="intensity" type="range" min="0" max="1.5" step="0.05" value="1" style="width:110px"><output id="intensity_o">1.00</output></label>
+  <label title="simulée : déroulé du catalogue étalé sur la vidéo ; trace : état enregistré pendant la génération">source
+    <select id="source"><option value="sim">simulée (catalogue)</option><option value="trace">trace du run</option><option value="manual">α manuel</option></select></label>
+  <label id="manual_wrap" style="display:none">α <input id="manual" type="range" min="0" max="1.5" step="0.01" value="0.5" style="width:110px"></label>
+  <span class="hint" id="info"></span>
+</header>
+
+<main>
+  <div id="stage">
+    <img id="imgA" alt=""><img id="imgB" alt="">
+    <div id="textwrap"><div id="text"></div></div>
+    <div id="hud"></div>
+  </div>
+</main>
+
+<aside>
+  <div class="hint">Chaque drogue a deux réglages : <b>calme</b> (α = 0) et <b>pic</b> (α = 1). À chaque instant, la typo est l'interpolation des deux selon l'α de la drogue (au-delà de 1 avec l'intensité). Les réglages sont gardés dans ce navigateur.</div>
+  <div class="tabs" style="margin-top:10px"><button id="tab_calm" class="on">calme (α = 0)</button><button id="tab_peak">pic (α = 1)</button></div>
+  <div id="controls"></div>
+  <h2>Réglages</h2>
+  <div style="display:flex; gap:6px; flex-wrap:wrap">
+    <button id="copy_peak_to_calm">pic → calme</button><button id="copy_calm_to_peak">calme → pic</button>
+    <button id="reset">défaut de la drogue</button><button id="export">copier tout (JSON)</button>
+  </div>
+  <div class="hint" id="export_msg" style="margin-top:6px"></div>
+</aside>
+
+<footer>
+  <div id="transport">
+    <button id="play">▶︎ lecture</button>
+    <input id="scrub" type="range" min="0" max="60" step="0.01" value="0">
+    <span id="readout"></span>
+  </div>
+  <div id="phasebar"><span id="cursor"></span></div>
+</footer>
+
+<audio id="audio" preload="auto"></audio>
+
+<script>
+// ---------------------------------------------------------------- paramètres
+// mix : part de lettres en Roboto Flex (0 = tout Recursive, 1 = tout Roboto Flex), tirage fixe par lettre
+const PARAMS = [
+  ["Mélange", [["mix", "Roboto Flex %", 0, 1, 0.01]]],
+  ["Recursive", [["r_wght","graisse",300,1000,1],["r_CASL","manuscrit",0,1,0.01],["r_slnt","penché",-15,0,0.1],["r_CRSV","cursive",0,1,0.01],["r_MONO","mono",0,1,0.01]]],
+  ["Roboto Flex", [["f_wght","graisse",100,1000,1],["f_wdth","largeur",25,151,1],["f_slnt","penché",-10,0,0.1],["f_GRAD","grade",-200,150,1],["f_opsz","taille optique",8,144,1],["f_XTRA","contreformes",323,603,1]]],
+  ["Mise en page", [["size","taille (vw)",1.5,9,0.05],["spacing","interlettrage (em)",-0.1,0.8,0.005],["hue","teinte",0,360,1],["sat","saturation %",0,100,1],["glow","halo",0,40,0.5]]],
+  ["Effets", [["jitter","tremblement",0,0.6,0.005],["wave","vague",0,0.8,0.005],["wavespeed","vitesse vague",0,8,0.05],["rotate","rotation (°)",0,40,0.5],
+              ["blur","flou (px)",0,12,0.1],["chroma","chromatique (px)",0,14,0.1],["trails","traînées",0,6,1],["flicker","scintillement",0,1,0.01],
+              ["glitch","glitch",0,0.5,0.005],["drift","dérive",0,3,0.01],["huespin","rotation teinte (°/s)",0,360,1],["reveal","apparition (s/lettre)",0,0.3,0.002]]],
+];
+const KEYS = PARAMS.flatMap(([, ps]) => ps.map(p => p[0]));
+const BASE = {mix:0, r_wght:400, r_CASL:0, r_slnt:0, r_CRSV:0.5, r_MONO:0, f_wght:400, f_wdth:100, f_slnt:0, f_GRAD:0, f_opsz:48, f_XTRA:468,
+  size:3.6, spacing:0.02, hue:45, sat:0, glow:6, jitter:0, wave:0, wavespeed:1.5, rotate:0, blur:0, chroma:0, trails:0, flicker:0, glitch:0, drift:0, huespin:0, reveal:0.03};
+const P = (o) => Object.assign({}, BASE, o);
+// réglages par défaut : identité (calme) et pic de chaque drogue, Recursive + Roboto Flex uniquement
+const DEFAULTS = {
+  aucune:   {calm: P({}), peak: P({})},
+  alcool:   {calm: P({mix:0.1, r_wght:450, r_CASL:0.2, hue:35, sat:30}),
+             peak: P({mix:0.15, r_wght:620, r_CASL:1, r_slnt:-12, r_CRSV:1, spacing:0.06, jitter:0.12, wave:0.35, wavespeed:0.8, rotate:9, blur:2.2, trails:2, hue:20, sat:55})},
+  cannabis: {calm: P({mix:0.2, r_wght:420, r_CASL:0.6, hue:110, sat:25, reveal:0.06}),
+             peak: P({mix:0.2, r_wght:380, r_CASL:1, spacing:0.18, wave:0.2, wavespeed:0.4, blur:1.4, trails:3, hue:95, sat:40, reveal:0.16, glow:14})},
+  cocaine:  {calm: P({mix:0.85, f_wght:700, f_wdth:60, f_GRAD:60, size:4, spacing:-0.01, sat:0, reveal:0.012}),
+             peak: P({mix:1, f_wght:1000, f_wdth:25, f_GRAD:150, f_opsz:144, size:6.2, spacing:-0.06, jitter:0.05, chroma:3, hue:0, sat:10, reveal:0.002, glow:2})},
+  amphetamines: {calm: P({mix:0.4, r_MONO:1, r_wght:500, f_wdth:75, hue:190, sat:20, reveal:0.02}),
+             peak: P({mix:0.6, r_MONO:1, r_wght:800, f_wght:800, f_wdth:35, size:3.2, spacing:-0.03, jitter:0.08, flicker:0.25, glitch:0.08, hue:180, sat:60, reveal:0.004})},
+  mdma:     {calm: P({mix:0.3, r_wght:500, r_CASL:0.5, f_wdth:110, hue:320, sat:45, glow:12}),
+             peak: P({mix:0.5, r_wght:800, r_CASL:1, f_wght:800, f_wdth:140, size:5.2, spacing:0.12, wave:0.25, wavespeed:2.2, hue:300, sat:85, glow:34, huespin:40})},
+  lsd:      {calm: P({mix:0.5, r_CASL:0.5, f_wdth:120, hue:260, sat:60}),
+             peak: P({mix:0.5, r_wght:900, r_CASL:1, r_slnt:-15, f_wght:900, f_wdth:151, f_XTRA:603, size:5.4, spacing:0.1, wave:0.7, wavespeed:3, rotate:14, chroma:9, trails:5, hue:200, sat:100, glow:20, huespin:220})},
+  champignons: {calm: P({mix:0.25, r_CASL:0.8, r_wght:430, hue:80, sat:35}),
+             peak: P({mix:0.3, r_CASL:1, r_CRSV:1, r_wght:560, f_wdth:130, spacing:0.08, wave:0.5, wavespeed:0.9, blur:1, trails:4, hue:60, sat:70, glow:18, huespin:30, drift:0.6})},
+  dmt:      {calm: P({mix:0.6, f_wdth:100, sat:10}),
+             peak: P({mix:0.7, f_wght:1000, f_wdth:151, f_GRAD:150, f_XTRA:603, size:7, spacing:0.4, wave:0.6, wavespeed:5, rotate:30, chroma:12, trails:6, flicker:0.3, hue:170, sat:100, glow:40, huespin:360})},
+  ketamine: {calm: P({mix:0.7, f_wght:300, f_wdth:120, spacing:0.12, sat:0, glow:4}),
+             peak: P({mix:0.8, f_wght:150, f_wdth:151, f_opsz:8, spacing:0.8, drift:2.6, blur:2, flicker:0.15, sat:0, glow:0, reveal:0.08})},
+  heroine:  {calm: P({mix:0.2, r_wght:380, r_CASL:0.3, hue:30, sat:20, reveal:0.06}),
+             peak: P({mix:0.25, r_wght:300, r_CASL:0.6, r_slnt:-6, f_wght:150, size:3.2, spacing:0.25, blur:4.5, trails:2, hue:25, sat:30, glow:22, reveal:0.2, drift:0.3})},
+  datura:   {calm: P({mix:0.45, r_wght:500, r_CASL:0.4, hue:10, sat:20}),
+             peak: P({mix:0.5, r_wght:900, r_CASL:1, r_slnt:-15, f_wght:900, f_wdth:30, size:5, spacing:-0.04, jitter:0.4, rotate:24, chroma:8, flicker:0.6, glitch:0.35, trails:3, hue:0, sat:70, glow:10})},
+};
+
+// ---------------------------------------------------------------- état
+const $ = (id) => document.getElementById(id);
+let INDEX, RUN, DRUGS, cur = null, tab = "calm", t = 0, playing = false, lastNow = 0;
+let presets = JSON.parse(localStorage.getItem("fontlab_presets") || "{}");
+const preset = (d) => (presets[d] ||= structuredClone(DEFAULTS[d] || DEFAULTS.aucune));
+const save = () => localStorage.setItem("fontlab_presets", JSON.stringify(presets));
+
+// ---------------------------------------------------------------- α de drogue
+function phaseAt(drug, x) {
+  const ph = DRUGS[drug]?.phases || [];
+  return ph.findIndex(p => x >= p.start && x < p.end) >= 0 ? ph.findIndex(p => x >= p.start && x < p.end) : ph.length - 1;
+}
+function simAlpha(drug, x) {  // niveau 0..4 de la phase -> 0..1, transitions lissées sur 5 % de la prise (comme le catalogue)
+  const ph = DRUGS[drug]?.phases; if (!ph) return [0, ""];
+  const i = phaseAt(drug, x), tr = 0.05, lv = (j) => ph[Math.max(0, Math.min(ph.length - 1, j))].level / 4;
+  let a = lv(i);
+  if (i + 1 < ph.length && x > ph[i].end - tr / 2) a = lv(i) + (lv(i + 1) - lv(i)) * (x - (ph[i].end - tr / 2)) / tr;
+  if (i > 0 && x < ph[i].start + tr / 2) a = lv(i - 1) + (lv(i) - lv(i - 1)) * (x - (ph[i].start - tr / 2)) / tr;
+  return [a, ph[i].name];
+}
+function alphaNow(sl) {
+  const drug = $("drug").value, src = $("source").value, k = +$("intensity").value;
+  if (drug === "aucune") return [0, "—"];
+  if (src === "manual") return [+$("manual").value, "manuel"];
+  if (src === "trace" && sl?.drug) return [Math.min(1.5, sl.drug.alpha / 0.004) * k, sl.drug.phase || "trace"];
+  const [a, name] = simAlpha(drug, t / RUN.total);
+  return [a * k, name + (src === "trace" ? " (pas de drogue dans la trace : simulée)" : "")];
+}
+
+// ---------------------------------------------------------------- contrôles
+function buildControls() {
+  const c = $("controls"); c.innerHTML = "";
+  for (const [title, ps] of PARAMS) {
+    const h = document.createElement("h2"); h.textContent = title; c.appendChild(h);
+    for (const [key, label, min, max, step] of ps) {
+      const row = document.createElement("div"); row.className = "row";
+      row.innerHTML = `<span>${label}</span><input type="range" min="${min}" max="${max}" step="${step}" data-k="${key}"><output></output>`;
+      const inp = row.querySelector("input"), out = row.querySelector("output");
+      inp.addEventListener("input", () => { preset($("drug").value)[tab][key] = +inp.value; out.textContent = fmt(+inp.value); save(); cur = null; });
+      c.appendChild(row);
+    }
+  }
+  syncControls();
+}
+const fmt = (v) => Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
+function syncControls() {
+  const p = preset($("drug").value)[tab];
+  document.querySelectorAll("#controls input").forEach(inp => { inp.value = p[inp.dataset.k]; inp.nextElementSibling.textContent = fmt(+inp.value); });
+  $("tab_calm").classList.toggle("on", tab === "calm"); $("tab_peak").classList.toggle("on", tab === "peak");
+}
+
+// ---------------------------------------------------------------- rendu
+const rnd = (a, b = 0) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };  // bruit fixe
+const noise = (i, tt, s) => Math.sin(tt * 7.3 * s + i * 1.7) * 0.6 + Math.sin(tt * 13.1 * s + i * 4.1) * 0.4;
+const GLYPHS = "ﾊﾐﾋｰ#%&@$?!ẞΔΣΩøæ∆¤§";
+
+function sliceAt(time) {
+  const s = RUN.slices; let i = s.findIndex(x => time < x.start + x.dur); return s[i < 0 ? s.length - 1 : i];
+}
+function mixState(a) {
+  const p = preset($("drug").value), o = {};
+  for (const k of KEYS) o[k] = p.calm[k] + (p.peak[k] - p.calm[k]) * a;  // a > 1 : extrapolation au-delà du pic
+  return o;
+}
+function buildText(sl) {
+  const el = $("text"); el.innerHTML = "";
+  [...sl.text].forEach((ch, i) => { const s = document.createElement("span"); s.textContent = ch; s.dataset.i = i; el.appendChild(s); });
+  cur = sl;
+}
+function render() {
+  if (!RUN) return;
+  const sl = sliceAt(t);
+  if (cur !== sl) buildText(sl);
+  const [a, phase] = alphaNow(sl), st = mixState(Math.max(0, a));
+  // images : les images de la tranche se partagent sa durée ; fondu de 0,8 s comme assemble.py
+  const n = sl.images.length, local = t - sl.start, subD = sl.dur / n, j = Math.min(n - 1, Math.floor(local / subD));
+  const imgA = $("imgA"), imgB = $("imgB"), c = 0.8;
+  const nextSrc = j + 1 < n ? sl.images[j + 1] : (RUN.slices[sl.k + 1]?.images[0] || null);
+  const tb = sl.start + (j + 1) * subD, x = nextSrc ? Math.max(0, Math.min(1, (t - (tb - c / 2)) / c)) : 0;
+  if (imgA.dataset.src !== sl.images[j]) { imgA.src = sl.images[j]; imgA.dataset.src = sl.images[j]; }
+  if (nextSrc && imgB.dataset.src !== nextSrc) { imgB.src = nextSrc; imgB.dataset.src = nextSrc; }
+  imgA.style.opacity = 1; imgB.style.opacity = x;
+
+  // texte
+  const recV = `'wght' ${st.r_wght}, 'CASL' ${st.r_CASL}, 'slnt' ${st.r_slnt}, 'CRSV' ${st.r_CRSV}, 'MONO' ${st.r_MONO}`;
+  const flxV = `'wght' ${st.f_wght}, 'wdth' ${st.f_wdth}, 'slnt' ${st.f_slnt}, 'GRAD' ${st.f_GRAD}, 'opsz' ${st.f_opsz}, 'XTRA' ${st.f_XTRA}`;
+  const hue = (st.hue + st.huespin * t) % 360, col = `hsl(${hue} ${st.sat}% 92%)`;
+  const txt = $("text");
+  txt.style.fontSize = st.size + "vw"; txt.style.letterSpacing = st.spacing + "em"; txt.style.color = col;
+  txt.style.filter = st.blur > 0.05 ? `blur(${st.blur}px)` : "none";
+  const sh = [];
+  if (st.glow > 0) sh.push(`0 0 ${st.glow}px hsl(${hue} ${st.sat}% 60% / .8)`);
+  if (st.chroma > 0.1) sh.push(`${st.chroma}px 0 0 rgba(255,0,60,.75)`, `${-st.chroma}px 0 0 rgba(0,220,255,.75)`);
+  for (let k = 1; k <= Math.round(st.trails); k++) sh.push(`${-k * 6}px ${k * 3}px ${k * 2}px hsl(${hue} ${st.sat}% 70% / ${0.35 / k})`);
+  txt.style.textShadow = sh.join(", ") || "0 2px 8px #000";
+  const spans = txt.children, N = spans.length, mid = (N - 1) / 2;
+  const prog = Math.max(0, local / Math.max(0.3, sl.voice));  // progression de la voix dans la tranche
+  for (let i = 0; i < N; i++) {
+    const s = spans[i], roboto = rnd(i, sl.k) < st.mix;
+    s.style.fontFamily = roboto ? "'Roboto Flex'" : "'Recursive'";
+    s.style.fontVariationSettings = roboto ? flxV : recV;
+    const appear = i * st.reveal, vis = Math.max(0, Math.min(1, (local - appear) / 0.25));
+    const flick = st.flicker > 0 ? 1 - st.flicker * Math.max(0, noise(i, t, 3)) : 1;
+    s.style.opacity = (vis * flick).toFixed(3);
+    const jx = st.jitter * noise(i, t, 2.2), jy = st.jitter * noise(i + 50, t, 2.7);
+    const wy = st.wave * Math.sin(t * st.wavespeed + i * 0.45);
+    const dx = st.drift * (i - mid) / Math.max(1, N) * Math.min(1, prog) * 2;
+    const dy = st.drift * 0.3 * Math.sin(i * 2.1) * Math.min(1, prog);
+    const r = st.rotate * noise(i + 90, t, 0.8);
+    s.style.transform = `translate(${jx + dx}em, ${jy + wy + dy}em) rotate(${r}deg)`;
+    const orig = sl.text[i];
+    s.textContent = (st.glitch > 0 && orig !== " " && rnd(i, Math.floor(t * 12)) < st.glitch) ? GLYPHS[Math.floor(rnd(i + 3, Math.floor(t * 12)) * GLYPHS.length)] : orig;
+  }
+  $("hud").textContent = `tranche ${sl.k + 1}/${RUN.slices.length} · ${$("drug").selectedOptions[0].textContent} · ${phase} · α ${a.toFixed(2)}`;
+  $("readout").textContent = `${t.toFixed(1)} s / ${RUN.total.toFixed(1)} s · α ${a.toFixed(2)} · ${phase}`;
+  $("scrub").value = t;
+  $("cursor").style.left = (100 * t / RUN.total) + "%";
+}
+
+// ---------------------------------------------------------------- lecture
+function loop(now) {
+  if (playing) {
+    const au = $("audio");
+    if (RUN.audio && !au.paused) t = au.currentTime; else t += (now - lastNow) / 1000;
+    if (t >= RUN.total) { t = RUN.total; pause(); }
+  }
+  lastNow = now; render(); requestAnimationFrame(loop);
+}
+function play() { playing = true; $("play").textContent = "❚❚ pause"; const au = $("audio"); if (RUN.audio) { au.currentTime = t; au.play().catch(() => {}); } }
+function pause() { playing = false; $("play").textContent = "▶︎ lecture"; $("audio").pause(); }
+
+function phasebar() {
+  const bar = $("phasebar"); [...bar.querySelectorAll("div")].forEach(d => d.remove());
+  const ph = DRUGS[$("drug").value]?.phases || [{name: "sans drogue", start: 0, end: 1, level: 0}];
+  for (const p of ph) {
+    const d = document.createElement("div"); d.style.width = (100 * (p.end - p.start)) + "%";
+    d.style.background = `hsl(${80 - p.level * 20} 85% ${78 - p.level * 9}%)`; d.textContent = `${p.name} · ${p.level}`;
+    bar.insertBefore(d, $("cursor"));
+  }
+}
+
+async function loadRun(id) {
+  RUN = await (await fetch(`data/${id}.json`)).json();
+  cur = null; t = 0; $("scrub").max = RUN.total;
+  // audio chargé en mémoire : http.server ne gère pas les requêtes Range, sans quoi le navigateur ne peut pas s'y déplacer
+  if (RUN.audio) {
+    const blob = await (await fetch(RUN.audio)).blob();
+    if ($("audio").src.startsWith("blob:")) URL.revokeObjectURL($("audio").src);
+    $("audio").src = URL.createObjectURL(blob);
+  } else $("audio").removeAttribute("src");
+  $("info").textContent = `${RUN.question || ""} · environnement ${RUN.environment || "?"} · voix ${RUN.mode || "mots"}` +
+    (RUN.slices.some(s => s.drug) ? " · drogue enregistrée dans la trace" : " · pas de drogue dans la trace");
+  RUN.slices.flatMap(s => s.images).forEach(src => { const im = new Image(); im.src = src; });  // préchargement
+}
+
+async function init() {
+  INDEX = await (await fetch("data/index.json")).json();
+  DRUGS = INDEX.drugs;
+  $("run").innerHTML = INDEX.runs.map(r => `<option value="${r.id}">${r.id} (${r.slices} tranches, ${r.total.toFixed(0)} s)</option>`).join("");
+  $("drug").innerHTML = `<option value="aucune">aucune</option>` + Object.entries(DRUGS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("");
+  $("drug").value = "alcool";
+  const def = INDEX.runs.find(r => r.id.includes("phrase")) || INDEX.runs[0];
+  $("run").value = def.id; await loadRun(def.id);
+  buildControls(); phasebar();
+  $("run").onchange = async () => { pause(); await loadRun($("run").value); };
+  $("drug").onchange = () => { syncControls(); phasebar(); cur = null; };
+  $("source").onchange = () => { $("manual_wrap").style.display = $("source").value === "manual" ? "" : "none"; };
+  $("intensity").oninput = () => $("intensity_o").textContent = (+$("intensity").value).toFixed(2);
+  $("tab_calm").onclick = () => { tab = "calm"; syncControls(); };
+  $("tab_peak").onclick = () => { tab = "peak"; syncControls(); };
+  $("copy_peak_to_calm").onclick = () => { const p = preset($("drug").value); p.calm = structuredClone(p.peak); save(); syncControls(); };
+  $("copy_calm_to_peak").onclick = () => { const p = preset($("drug").value); p.peak = structuredClone(p.calm); save(); syncControls(); };
+  $("reset").onclick = () => { presets[$("drug").value] = structuredClone(DEFAULTS[$("drug").value]); save(); syncControls(); };
+  $("export").onclick = async () => {
+    const all = Object.fromEntries(Object.keys(DEFAULTS).map(d => [d, preset(d)]));
+    const s = JSON.stringify(all, null, 1);
+    try { await navigator.clipboard.writeText(s); $("export_msg").textContent = "Réglages de toutes les drogues copiés dans le presse-papiers."; }
+    catch { $("export_msg").textContent = "Copie impossible : JSON affiché dans la console."; console.log(s); }
+  };
+  $("play").onclick = () => playing ? pause() : play();
+  $("scrub").oninput = () => { t = +$("scrub").value; if (playing && RUN.audio) $("audio").currentTime = t; };
+  document.addEventListener("keydown", (e) => { if (e.code === "Space" && e.target.tagName !== "SELECT") { e.preventDefault(); playing ? pause() : play(); } });
+  requestAnimationFrame((n) => { lastNow = n; requestAnimationFrame(loop); });
+}
+init();
+</script>
+</body>
+</html>

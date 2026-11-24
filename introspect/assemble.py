@@ -201,6 +201,11 @@ def assemble(run_dir: Path, cfg: dict | None = None, mode: str | None = None, ra
     manifest = json.loads(fj.read_text()) if fj.exists() else [{"window": k, "file": f"{k:04d}.png", "intermediate": False} for k in range(n)]
     shots = []
     for k in range(n):
+        subs = sorted((m for m in manifest if m["window"] == k and not m["intermediate"] and "sub" in m),
+                      key=lambda m: m["sub"])
+        if len(subs) > 1:  # plusieurs images par tranche (render --per-slice) : réparties à parts égales
+            shots += [(m["file"], durs[k] / len(subs)) for m in subs]
+            continue
         files = [m["file"] for m in manifest if m["window"] == k and m["intermediate"]] + [f"{k:04d}.png"]
         # les intermédiaires préparent la tranche k : ils occupent la 1re moitié de sa durée
         if len(files) > 1:

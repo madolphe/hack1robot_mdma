@@ -162,6 +162,23 @@ def voice(run_dir: Path, cfg: dict | None = None):
         return
     spk = Speaker(cfg)
     meta = []
+    if vc.get("mode") == "phrase":  # un petit LM relie les mots de chaque tranche en une phrase (introspect/phrases.py)
+        pj = run_dir / "phrases.json"
+        if not pj.exists():
+            from .phrases import build
+            build(run_dir, cfg)
+        phrases = {p["window"]: p for p in json.loads(pj.read_text(encoding="utf-8"))["phrases"]}
+        for k, w in enumerate(wins):
+            ph = phrases[k]["phrase"]
+            out = spk.say(ph)
+            sf.write(adir / "words" / f"{k:04d}_00.wav", out, SR)
+            sf.write(adir / f"{k:04d}.wav", out, SR)
+            meta.append({"window": k, "words": phrases[k]["words"], "phrase": ph, "weights": [1.0],
+                         "duration": round(len(out) / SR, 3), "langs": ["fr"]})
+        (run_dir / "voice.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        log(f"{len(wins)} phrases dites, durée totale {sum(m['duration'] for m in meta):.1f} s")
+        log.done()
+        return
     for k, w in enumerate(wins):
         ws = words_for(w, vc.get("mode", "new_words"))
         weights = [dict(w["words"]).get(x, 0.0) for x in ws]

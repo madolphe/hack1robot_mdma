@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>hack1robo · la drogue dans la typo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Recursive:slnt,wght,CASL,CRSV,MONO@-15..0,300..1000,0..1,0..1,0..1&family=Roboto+Flex:opsz,slnt,wdth,wght,GRAD,XOPQ,XTRA,YOPQ,YTAS,YTDE,YTFI,YTLC,YTUC@8..144,-10..0,25..151,100..1000,-200..150,27..175,323..603,25..135,649..854,-305..-98,560..788,416..570,528..760&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0b0b0e; --panel:#141419; --line:#24242c; --ink:#e9e7e2; --mute:#8a8993; --acc:#d8ff5c; --neg:#5cc8ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; height:100vh; background:var(--bg); color:var(--ink); display:grid; grid-template-columns:1fr 460px; grid-template-rows:auto 1fr;
+         font:12px/1.4 "Recursive", system-ui, sans-serif; font-variation-settings:'MONO' 0; }
+  header { grid-column:1/3; display:flex; gap:14px; align-items:center; padding:9px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { margin:0 6px 0 0; font-size:13px; font-variation-settings:'MONO' 1, 'wght' 750; letter-spacing:.05em; }
+  header label { color:var(--mute); display:flex; gap:6px; align-items:center; }
+  select, input[type=number] { background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:4px; padding:3px 5px; font:inherit; }
+  input[type=number] { width:62px; font-variation-settings:'MONO' 1; font-size:11px; }
+  button { background:#22222a; color:var(--ink); border:1px solid var(--line); border-radius:4px; padding:5px 9px; font:inherit; cursor:pointer; }
+  button.on, button.primary { background:var(--acc); color:#111; border-color:var(--acc); }
+  main { display:grid; grid-template-rows:1fr auto; min-height:0; }
+  #page { overflow-y:auto; overflow-x:hidden; transition: background .3s linear; padding:5vh 7vw 30vh; scroll-behavior:smooth; }
+  #text { color:#f1efe9; }
+  #text .w { display:inline-block; margin-right:var(--ws, .28em); white-space:nowrap; }
+  #text .w span { display:inline-block; will-change:transform; }
+  #below { border-top:1px solid var(--line); padding:8px 14px 10px; }
+  #curve { width:100%; height:120px; display:block; background:var(--panel); border-radius:4px; cursor:crosshair; }
+  .curveparams { display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; color:var(--mute); align-items:center; }
+  .curveparams label { display:flex; gap:5px; align-items:center; }
+  #status { font-variation-settings:'MONO' 1; font-size:11px; color:var(--mute); margin-left:auto; }
+  aside { grid-row:2; grid-column:2; background:var(--panel); border-left:1px solid var(--line); overflow:auto; padding:10px 12px 40px; }
+  aside h2 { margin:14px 0 4px; font-size:10.5px; text-transform:uppercase; letter-spacing:.12em; color:var(--mute); font-variation-settings:'MONO' 1; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-weight:400; color:var(--mute); font-size:10px; padding:2px 3px; font-variation-settings:'MONO' 1; position:sticky; top:-10px; background:var(--panel); }
+  td { padding:1px 3px; }
+  td:first-child { color:var(--ink); white-space:nowrap; }
+  td.val { font-variation-settings:'MONO' 1; font-size:10.5px; text-align:right; color:var(--acc); width:44px; }
+  tr.adv .advc, .advc { display:none; }
+  body.adv .advc { display:table-cell; }
+  select.resp { width:72px; padding:2px; font-size:11px; }
+  .hint { color:var(--mute); font-size:11px; }
+  .row { display:flex; gap:8px; align-items:center; margin:4px 0; }
+  .row input[type=range] { flex:1; accent-color:var(--acc); }
+</style>
+</head>
+<body>
+<header>
+  <h1>LA DROGUE DANS LA TYPO</h1>
+  <label>texte <select id="textsel"></select></label>
+  <label>drogue <select id="drug"></select></label>
+  <button id="play" class="primary">▶︎ écrire</button>
+  <button id="restart">⟲ recommencer</button>
+  <label>vitesse <input id="rate" type="number" min="0.5" max="30" step="0.5" value="5"> mots/s</label>
+  <label title="figé : chaque mot garde l'état de la typo au moment où il est écrit (le texte garde la trace du trajet) ; vivant : tout le texte suit l'état courant">
+    mots <select id="freeze"><option value="frozen">figés à l'écriture</option><option value="live">vivants</option></select></label>
+  <span class="hint" id="question"></span>
+</header>
+
+<main>
+  <div id="page"><div id="text"></div></div>
+  <div id="below">
+    <canvas id="curve"></canvas>
+    <div class="curveparams">
+      <b style="color:var(--ink)">courbe α</b> (axe horizontal : progression du texte)
+      <label>pic à <input id="c_t1" type="number" min="0.02" max="0.95" step="0.01" value="0.25"></label>
+      <label>plateau jusqu'à <input id="c_t2" type="number" min="0.02" max="0.97" step="0.01" value="0.40"></label>
+      <label>creux à <input id="c_t3" type="number" min="0.05" max="0.99" step="0.01" value="0.72"></label>
+      <label>α pic <input id="c_peak" type="number" min="0" max="1.5" step="0.05" value="1"></label>
+      <label>α creux <input id="c_neg" type="number" min="-1.5" max="0" step="0.05" value="-0.6"></label>
+      <label>α final <input id="c_end" type="number" min="-1.5" max="1.5" step="0.05" value="-0.1"></label>
+      <span id="status"></span>
+    </div>
+  </div>
+</main>
+
+<aside>
+  <div class="hint">État de la typo = <b>neutre</b> + réponse(α) × vecteur de la drogue. Pour chaque paramètre : la valeur neutre (α = 0), la valeur à α = +1 et à α = −1. Les colonnes avancées règlent la <b>réponse</b> (linéaire, seuil, saturation), le <b>seuil</b> et les <b>retards</b> à la montée et à la descente (hystérésis). Réglages gardés dans ce navigateur.</div>
+  <div class="row" style="margin-top:8px">
+    <button id="advtoggle">colonnes avancées</button>
+    <button id="reset">défaut de la drogue</button>
+    <button id="export">copier (JSON)</button>
+  </div>
+  <div class="hint" id="msg"></div>
+  <h2>Réseau → typo (par mot)</h2>
+  <div class="hint">Entropie de la lecture J-lens sur les tokens du mot (incertitude du réseau), normalisée sur le texte.</div>
+  <div class="row"><span style="width:150px">entropie → instabilité</span><input id="k_inst" type="range" min="0" max="2" step="0.05" value="0.8"><span id="k_inst_o" class="hint">0.80</span></div>
+  <div class="row"><span style="width:150px">entropie → graisse</span><input id="k_wght" type="range" min="-1" max="1" step="0.05" value="0.3"><span id="k_wght_o" class="hint">0.30</span></div>
+  <div class="row"><span style="width:150px">entropie → teinte (°)</span><input id="k_hue" type="range" min="0" max="180" step="5" value="40"><span id="k_hue_o" class="hint">40</span></div>
+  <div class="row"><span style="width:150px">entropie → opacité</span><input id="k_op" type="range" min="0" max="1" step="0.05" value="0"><span id="k_op_o" class="hint">0.00</span></div>
+  <div id="params"></div>
+</aside>
+
+<script>
+// ------------------------------------------------------------------ espace de paramètres
+// [clé, libellé, min, max, neutre, groupe]
+const SPACE = [
+  ["mix", "part Roboto Flex", 0, 1, 0.35, "Mélange des deux polices (par lettre)"],
+  ["r_wght", "graisse", 300, 1000, 420, "Recursive"], ["r_CASL", "manuscrit", 0, 1, 0, "Recursive"], ["r_slnt", "penché", -15, 0, 0, "Recursive"],
+  ["r_CRSV", "cursive", 0, 1, 0.5, "Recursive"], ["r_MONO", "mono", 0, 1, 0, "Recursive"],
+  ["f_wght", "graisse", 100, 1000, 400, "Roboto Flex"], ["f_wdth", "largeur", 25, 151, 100, "Roboto Flex"], ["f_opsz", "taille optique", 8, 144, 36, "Roboto Flex"],
+  ["f_GRAD", "grade", -200, 150, 0, "Roboto Flex"], ["f_slnt", "penché", -10, 0, 0, "Roboto Flex"], ["f_XOPQ", "trait vertical", 27, 175, 96, "Roboto Flex"],
+  ["f_YOPQ", "trait horizontal", 25, 135, 79, "Roboto Flex"], ["f_XTRA", "contreformes", 323, 603, 468, "Roboto Flex"], ["f_YTLC", "haut. minuscules", 416, 570, 514, "Roboto Flex"],
+  ["f_YTUC", "haut. capitales", 528, 760, 712, "Roboto Flex"], ["f_YTAS", "montantes", 649, 854, 750, "Roboto Flex"], ["f_YTDE", "descendantes", -305, -98, -203, "Roboto Flex"],
+  ["size", "corps (vw)", 1, 6, 2.4, "Mise en page"], ["track", "interlettrage (em)", -0.12, 0.8, 0.01, "Mise en page"], ["wspace", "espace mots (em)", 0, 2.5, 0.28, "Mise en page"],
+  ["lead", "interlignage", 0.8, 2.6, 1.32, "Mise en page"], ["baseline", "ligne de base (em)", -0.6, 0.6, 0, "Mise en page"],
+  ["rate", "vitesse d'écriture ×", 0.2, 4, 1, "Temps"], ["hesit", "hésitations", 0, 1, 0, "Temps"], ["fadein", "apparition (s)", 0, 2, 0.25, "Temps"],
+  ["jitter", "tremblement (em)", 0, 0.5, 0, "Instabilité"], ["rot", "rotation (°)", 0, 45, 0, "Instabilité"], ["wave", "vague (em)", 0, 0.8, 0, "Instabilité"],
+  ["axnoise", "bruit d'axes", 0, 1, 0, "Instabilité"], ["scnoise", "bruit d'échelle", 0, 0.8, 0, "Instabilité"],
+  ["hue", "teinte", 0, 360, 45, "Rendu"], ["sat", "saturation %", 0, 100, 0, "Rendu"], ["light", "luminosité %", 20, 100, 92, "Rendu"],
+  ["opac", "opacité", 0.05, 1, 1, "Rendu"], ["blur", "flou (px)", 0, 10, 0, "Rendu"], ["glow", "halo (px)", 0, 40, 0, "Rendu"],
+  ["chroma", "chromatique (px)", 0, 12, 0, "Rendu"], ["trails", "traînées", 0, 6, 0, "Rendu"],
+  ["hgrad", "dégradé dans le mot (°)", 0, 360, 0, "Couleur"], ["hspread", "écart entre lettres (°)", 0, 360, 0, "Couleur"],
+  ["huespin", "rotation de teinte (°/s)", 0, 240, 0, "Couleur"], ["pulse", "pulsation lumière", 0, 1, 0, "Couleur"],
+  ["bg_hue", "fond : teinte", 0, 360, 240, "Couleur"], ["bg_sat", "fond : saturation %", 0, 100, 8, "Couleur"], ["bg_light", "fond : luminosité %", 0, 60, 5, "Couleur"],
+  ["curve", "courbure (em)", 0, 4, 0, "Trajectoire des lignes"], ["tilt", "inclinaison (°)", -35, 35, 0, "Trajectoire des lignes"],
+  ["walk", "marche aléatoire (em/mot)", 0, 1.2, 0, "Trajectoire des lignes"], ["scatter", "dispersion (0 ligne, 1 partout)", 0, 1, 0, "Trajectoire des lignes"],
+  ["fall", "chute (em/s, < 0 : monte)", -0.6, 1, 0, "Trajectoire des lignes"],
+];
+const K = Object.fromEntries(SPACE.map(s => [s[0], s]));
+const NOISE = new Set(["jitter", "rot", "wave", "axnoise", "scnoise", "hesit", "blur", "chroma", "trails", "glow",
+                       "hspread", "huespin", "pulse", "curve", "tilt", "walk", "scatter", "fall"]);
+
+// Vecteurs des drogues : valeur visée à α = +1 (pos) et à α = −1 (neg) pour les paramètres qui bougent ;
+// les autres restent au neutre. neg non précisé : opposé atténué pour la géométrie, extinction pour le bruit.
+const D = {
+  alcool: { pos:{r_CASL:1, r_slnt:-13, r_CRSV:1, r_wght:620, mix:0.15, track:0.06, wspace:0.6, lead:1.6, rate:0.75, hesit:0.35, jitter:0.12, rot:10, wave:0.3, axnoise:0.4, blur:1.6, trails:2, hue:25, sat:55, light:85},
+            neg:{r_CASL:0, r_MONO:1, mix:0, r_wght:330, track:0.12, rate:0.6, sat:0, light:60, opac:0.7} },
+  cannabis:{ pos:{r_CASL:1, r_wght:380, track:0.2, wspace:1, lead:1.9, rate:0.45, hesit:0.6, wave:0.25, blur:1.2, glow:14, hue:100, sat:40, fadein:1.4},
+            neg:{rate:1.4, r_MONO:0.7, track:-0.03, light:70, opac:0.8} },
+  cocaine: { pos:{mix:1, f_wght:1000, f_wdth:25, f_GRAD:150, f_opsz:144, f_XOPQ:175, f_YTLC:570, size:3.4, track:-0.07, wspace:0.12, lead:1.0, rate:3.2, fadein:0, jitter:0.04, chroma:3, light:100},
+            neg:{mix:1, f_wght:120, f_wdth:60, f_GRAD:-200, size:1.8, rate:0.4, light:45, opac:0.55} },
+  amphetamines:{ pos:{r_MONO:1, mix:0.5, r_wght:800, f_wdth:30, f_wght:800, size:2.1, track:-0.04, wspace:0.1, lead:1.0, rate:3.8, fadein:0, jitter:0.06, axnoise:0.3, hue:185, sat:60},
+            neg:{rate:0.35, r_wght:310, f_wght:120, light:50, opac:0.6, hesit:0.6} },
+  mdma:    { pos:{r_CASL:1, r_wght:800, mix:0.5, f_wght:800, f_wdth:140, f_XTRA:603, size:3.2, track:0.12, wspace:0.6, wave:0.25, glow:30, hue:310, sat:85, light:90},
+            neg:{r_wght:320, f_wght:150, f_wdth:70, size:2, light:45, sat:10, hue:220, opac:0.6, rate:0.6} },
+  lsd:     { pos:{mix:0.5, r_wght:900, r_CASL:1, r_slnt:-15, f_wght:900, f_wdth:151, f_XTRA:603, f_YTLC:570, f_YTAS:854, f_YTDE:-305, size:3.4, track:0.1, wave:0.7, rot:14, axnoise:0.8, scnoise:0.4, chroma:8, trails:4, hue:200, sat:100, glow:16},
+            neg:{f_wdth:60, f_XTRA:323, r_MONO:1, size:2, sat:0, light:70} },
+  champignons:{ pos:{r_CASL:1, r_CRSV:1, r_wght:560, f_wdth:130, f_YTLC:570, track:0.08, wspace:0.7, lead:1.8, rate:0.6, wave:0.5, axnoise:0.4, blur:0.8, trails:3, glow:16, hue:70, sat:65},
+            neg:{r_CASL:0, r_MONO:0.6, light:65, sat:5, rate:0.8} },
+  dmt:     { pos:{mix:0.7, f_wght:1000, f_wdth:151, f_GRAD:150, f_XTRA:603, f_YTUC:760, f_YTAS:854, size:4.4, track:0.5, wspace:1.4, wave:0.6, rot:30, axnoise:1, scnoise:0.7, chroma:12, trails:6, glow:40, hue:170, sat:100, light:100},
+            neg:{size:1.6, f_wght:100, sat:0, light:40, opac:0.4} },
+  ketamine:{ pos:{mix:0.8, f_wght:150, f_wdth:151, f_opsz:8, f_YTLC:416, track:0.8, wspace:2.4, lead:2.4, rate:0.5, hesit:0.5, fadein:1.6, baseline:0.4, jitter:0.2, scnoise:0.3, blur:1.5, sat:0, light:80, opac:0.75},
+            neg:{track:-0.1, wspace:0.05, lead:0.9, rate:1.6, size:2.8} },
+  heroine: { pos:{r_wght:300, f_wght:120, r_CASL:0.6, r_slnt:-6, size:2.1, track:0.25, wspace:0.8, lead:1.9, rate:0.3, fadein:2, blur:3.5, glow:22, hue:28, sat:30, light:78, opac:0.75},
+            neg:{rate:1.8, hesit:0.5, jitter:0.15, light:96, sat:0, r_wght:700, axnoise:0.5} },
+  datura:  { pos:{mix:0.5, r_wght:900, r_CASL:1, r_slnt:-15, f_wght:900, f_wdth:28, f_YTDE:-305, f_YTUC:760, size:3, track:-0.05, rate:1.6, hesit:0.8, jitter:0.4, rot:28, axnoise:1, scnoise:0.6, chroma:7, trails:3, hue:0, sat:75},
+            neg:{opac:0.35, blur:4, sat:0, light:55, rate:0.4} },
+};
+// trajectoire des lignes et couleur, ajoutées aux vecteurs ci-dessus
+const EXTRA = {
+  alcool:      { pos:{light:70, curve:0.9, tilt:6, walk:0.18, fall:0.04, hgrad:40, hspread:20, bg_hue:20, bg_sat:30, bg_light:9},
+                 neg:{bg_hue:210, bg_sat:5, bg_light:14} },
+  cannabis:    { pos:{light:70, curve:0.6, walk:0.08, fall:-0.05, hgrad:60, huespin:8, pulse:0.2, bg_hue:120, bg_sat:25, bg_light:7},
+                 neg:{bg_hue:200, bg_sat:10, bg_light:10} },
+  cocaine:     { pos:{tilt:-4, walk:0.05, hspread:0, bg_hue:0, bg_sat:0, bg_light:0, pulse:0.35},
+                 neg:{bg_hue:220, bg_sat:6, bg_light:16, fall:0.12} },
+  amphetamines:{ pos:{light:66, tilt:3, walk:0.25, curve:0.2, hspread:30, pulse:0.5, bg_hue:185, bg_sat:40, bg_light:6},
+                 neg:{fall:0.15, bg_hue:200, bg_sat:5, bg_light:12} },
+  mdma:        { pos:{light:66, curve:1.2, walk:0.1, hgrad:120, hspread:40, huespin:25, pulse:0.4, bg_hue:320, bg_sat:45, bg_light:12},
+                 neg:{fall:0.2, bg_hue:230, bg_sat:15, bg_light:6} },
+  lsd:         { pos:{light:62, curve:2.6, tilt:10, walk:0.35, scatter:0.35, hgrad:240, hspread:140, huespin:90, pulse:0.5, bg_hue:275, bg_sat:55, bg_light:14},
+                 neg:{bg_hue:210, bg_sat:0, bg_light:10} },
+  champignons: { pos:{light:64, curve:1.8, walk:0.22, scatter:0.15, fall:-0.03, hgrad:90, hspread:50, huespin:15, pulse:0.3, bg_hue:95, bg_sat:35, bg_light:10},
+                 neg:{bg_hue:40, bg_sat:5, bg_light:8} },
+  dmt:         { pos:{light:60, curve:3.5, tilt:25, walk:0.8, scatter:1, hgrad:360, hspread:360, huespin:200, pulse:0.8, bg_hue:190, bg_sat:70, bg_light:18},
+                 neg:{bg_hue:0, bg_sat:0, bg_light:0} },
+  ketamine:    { pos:{walk:0.5, scatter:0.85, fall:-0.08, hspread:10, bg_hue:220, bg_sat:10, bg_light:22},
+                 neg:{bg_hue:220, bg_sat:5, bg_light:4} },
+  heroine:     { pos:{light:74, tilt:-3, walk:0.12, fall:0.18, hgrad:20, bg_hue:30, bg_sat:30, bg_light:10},
+                 neg:{bg_hue:200, bg_sat:5, bg_light:18} },
+  datura:      { pos:{light:56, curve:1.2, tilt:22, walk:0.9, scatter:0.55, fall:0.12, hspread:90, pulse:0.7, bg_hue:350, bg_sat:50, bg_light:7},
+                 neg:{bg_hue:0, bg_sat:0, bg_light:2, scatter:0.2} },
+};
+for (const d in EXTRA) { Object.assign(D[d].pos, EXTRA[d].pos); Object.assign(D[d].neg, EXTRA[d].neg); }
+const LABELS = {alcool:"Alcool", cannabis:"Cannabis", cocaine:"Cocaïne", amphetamines:"Amphétamines", mdma:"MDMA", lsd:"LSD", champignons:"Champignons", dmt:"DMT", ketamine:"Kétamine", heroine:"Héroïne", datura:"Datura"};
+
+function defaultFor(drug) {
+  const v = D[drug], rows = {};
+  for (const [k, , min, max, neu] of SPACE) {
+    const pos = v.pos[k] ?? neu;
+    let neg = v.neg[k];
+    if (neg === undefined) neg = NOISE.has(k) ? (k === "hesit" ? 0 : 0) : Math.max(min, Math.min(max, neu - (pos - neu) * 0.5));
+    const isNoise = NOISE.has(k);
+    rows[k] = {neu, pos, neg, resp: isNoise ? "seuil" : "lin", thr: isNoise ? 0.25 : 0, up: isNoise ? 0.6 : 0.3, down: isNoise ? 4 : 1.2};
+  }
+  return rows;
+}
+
+// ------------------------------------------------------------------ état
+const $ = (id) => document.getElementById(id);
+let TEXTS, TXT, presets = JSON.parse(localStorage.getItem("typolab_presets") || "{}");
+const preset = (d) => {
+  const def = defaultFor(d);
+  presets[d] ||= def;
+  for (const k in def) presets[d][k] ||= def[k];  // paramètres ajoutés depuis l'enregistrement
+  return presets[d];
+};
+const save = () => localStorage.setItem("typolab_presets", JSON.stringify(presets));
+let walkX = 0, walkY = 0, playing = false, idx = 0, clock = 0, nextAt = 0, lastNow = 0, filt = {}, entNorm = [];
+
+// ------------------------------------------------------------------ courbe α
+function curveParams() { return ["t1","t2","t3","peak","neg","end"].reduce((o, k) => (o[k] = +$("c_" + k).value, o), {}); }
+function alphaAt(p) {
+  const c = curveParams(), t1 = Math.min(c.t1, c.t2), t2 = Math.min(Math.max(c.t2, t1), c.t3), t3 = Math.max(c.t3, t2);
+  const ease = (a, b, x) => a + (b - a) * (0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x))));
+  if (p <= t1) return ease(0, c.peak, p / t1);
+  if (p <= t2) return c.peak;
+  if (p <= t3) return ease(c.peak, c.neg, (p - t2) / Math.max(1e-6, t3 - t2));
+  return ease(c.neg, c.end, (p - t3) / Math.max(1e-6, 1 - t3));
+}
+function drawCurve(progress, aNow) {
+  const cv = $("curve"), W = cv.width = cv.clientWidth * devicePixelRatio, H = cv.height = cv.clientHeight * devicePixelRatio, g = cv.getContext("2d");
+  const y = (a) => H / 2 - a / 1.6 * (H / 2 - 6);
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = "#333"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y(0)); g.lineTo(W, y(0)); g.stroke();
+  for (const a of [1, -1]) { g.setLineDash([3, 4]); g.beginPath(); g.moveTo(0, y(a)); g.lineTo(W, y(a)); g.stroke(); }
+  g.setLineDash([]);
+  g.lineWidth = 2 * devicePixelRatio; g.beginPath();
+  for (let i = 0; i <= 300; i++) { const p = i / 300, a = alphaAt(p); i ? g.lineTo(p * W, y(a)) : g.moveTo(0, y(a)); }
+  const grad = g.createLinearGradient(0, 0, 0, H); grad.addColorStop(0, "#d8ff5c"); grad.addColorStop(0.5, "#888"); grad.addColorStop(1, "#5cc8ff");
+  g.strokeStyle = grad; g.stroke();
+  g.fillStyle = "#fff"; g.fillRect(progress * W - devicePixelRatio, 0, 2 * devicePixelRatio, H);
+  g.font = `${11 * devicePixelRatio}px Recursive`; g.fillStyle = "#8a8993";
+  g.fillText("+1", 4, y(1) - 3); g.fillText("0", 4, y(0) - 3); g.fillText("−1", 4, y(-1) - 3);
+  g.fillStyle = aNow >= 0 ? "#d8ff5c" : "#5cc8ff"; g.beginPath(); g.arc(progress * W, y(aNow), 5 * devicePixelRatio, 0, 7); g.fill();
+}
+
+// ------------------------------------------------------------------ état typographique
+const shape = (r, x) => {  // x = |α| filtré, réponse du paramètre
+  if (r.resp === "seuil") { const z = Math.max(0, Math.min(1, (x - r.thr) / Math.max(0.05, 1 - r.thr))); return z * z * (3 - 2 * z) * Math.max(1, x); }
+  if (r.resp === "sat") return (1 - Math.exp(-3 * x)) / (1 - Math.exp(-3));
+  return x;
+};
+function updateFilters(a, dt) {  // retards par paramètre, différents à la montée et à la descente (hystérésis)
+  const P = preset($("drug").value);
+  for (const k in P) {
+    const r = P[k], f = filt[k] ?? 0, up = Math.abs(a) > Math.abs(f) && Math.sign(a) === Math.sign(f || a);
+    const tau = Math.max(0.001, up ? r.up : r.down);
+    filt[k] = f + (a - f) * (1 - Math.exp(-dt / tau));
+  }
+}
+function stateNow() {
+  const P = preset($("drug").value), s = {};
+  for (const [k, , min, max] of SPACE) {
+    const r = P[k], a = filt[k] ?? 0, m = shape(r, Math.abs(a));
+    const v = r.neu + (a >= 0 ? (r.pos - r.neu) : (r.neg - r.neu)) * m;
+    s[k] = Math.max(min, Math.min(max * 1.2, v));
+  }
+  return s;
+}
+
+// ------------------------------------------------------------------ texte
+const rnd = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
+const nz = (i, t, s) => Math.sin(t * 6.1 * s + i * 1.7) * 0.6 + Math.sin(t * 11.3 * s + i * 4.3) * 0.4;
+const clampAx = (k, v) => Math.max(K[k][2], Math.min(K[k][3], v));
+
+function wordEl(w, i) {
+  const el = document.createElement("span"); el.className = "w"; el.dataset.i = i;
+  [...w.w].forEach((ch, j) => { const s = document.createElement("span"); s.textContent = ch; el.appendChild(s); });
+  return el;
+}
+function addWord(i, st) {
+  const w = TXT.words[i], text = $("text");
+  for (let n = 0; n < w.nl; n++) text.appendChild(document.createElement("br"));
+  const el = wordEl(w, i); el._st = {...st}; el._born = clock; text.appendChild(el);
+  // la marche aléatoire s'accumule de mot en mot : la ligne dérive et ne revient pas
+  walkY += (rnd(i, 41) - 0.5) * 2 * st.walk; walkX += (rnd(i, 43) - 0.5) * st.walk * 0.6;
+  walkY *= 0.995;  // très léger rappel, pour que le texte ne quitte pas définitivement la page
+  el._walk = [walkX, walkY];
+  const page = $("page"); if (page.scrollHeight - page.scrollTop - page.clientHeight < page.clientHeight * 0.6 || true) page.scrollTop = page.scrollHeight;
+}
+function styleWord(el, st, now) {
+  const i = +el.dataset.i, e = entNorm[i] ?? 0.5, ki = +$("k_inst").value, kw = +$("k_wght").value, ko = +$("k_op").value;
+  const inst = Math.max(0, 1 + ki * (e - 0.5) * 2);  // incertitude du réseau -> instabilité
+  const dW = kw * (e - 0.5) * 2 * 250;
+  const age = now - el._born, vis = st.fadein > 0.01 ? Math.min(1, age / st.fadein) : 1;
+  el.style.marginRight = st.wspace + "em";
+  el.style.letterSpacing = st.track + "em";
+  el.style.verticalAlign = "baseline";
+  el.style.opacity = (vis * st.opac * (1 - ko * e * 0.85)).toFixed(3);
+  const kh = +$("k_hue").value;
+  const hue = (st.hue + st.huespin * now + kh * (e - 0.5) * 2 + 360 * 4) % 360;
+  // trajectoire : le mot quitte la ligne horizontale (valeurs figées à sa naissance)
+  if (el._x == null) el._x = el.offsetLeft / Math.max(1, el.parentNode.clientWidth);
+  const fs = st.size * innerWidth / 100, pw = $("page").clientWidth, ph = $("page").clientHeight;
+  const [wx, wy0] = el._walk || [0, 0];
+  let dx = wx * fs, dy = wy0 * fs;
+  dy += st.curve * fs * Math.sin(2 * Math.PI * el._x * 1.3 + i * 0.09);
+  dy += Math.tan(st.tilt * Math.PI / 180) * (el._x - 0.5) * pw;
+  dy += st.fall * fs * Math.min(60, age);
+  dx += (rnd(i, 51) - 0.5) * st.scatter * pw * 0.9;
+  dy += (rnd(i, 53) - 0.5) * st.scatter * ph * 0.9 + st.scatter * Math.sin(now * 0.4 + i) * fs * 0.6;
+  const wr = st.tilt + (rnd(i, 57) - 0.5) * st.scatter * 120;
+  el.style.transform = (dx || dy || wr) ? `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) rotate(${wr.toFixed(2)}deg)` : "none";
+  el.style.filter = st.blur > 0.05 ? `blur(${(st.blur * (0.6 + 0.4 * inst)).toFixed(2)}px)` : "none";
+  const sh = [];
+  if (st.glow > 0.3) sh.push(`0 0 ${st.glow}px hsl(${hue} ${st.sat}% 60% / .75)`);
+  if (st.chroma > 0.1) sh.push(`${st.chroma}px 0 0 rgba(255,0,70,.7)`, `${-st.chroma}px 0 0 rgba(0,220,255,.7)`);
+  for (let t = 1; t <= Math.round(st.trails); t++) sh.push(`${-t * 4}px ${t * 2}px ${t * 1.5}px hsl(${hue} ${st.sat}% 70% / ${0.35 / t})`);
+  el.style.textShadow = sh.join(", ") || "none";
+  const L = el.children.length;
+  [...el.children].forEach((s, j) => {
+    const lh = hue + st.hgrad * (L > 1 ? j / (L - 1) - 0.5 : 0) + st.hspread * (rnd(i * 17 + j, 61) - 0.5);
+    const li = Math.max(5, Math.min(100, st.light + st.pulse * 22 * Math.sin(now * 3.1 + i * 0.7 + j * 0.3)));
+    s.style.color = `hsl(${(lh + 720) % 360} ${st.sat}% ${li}%)`;
+    const rob = rnd(i * 31 + j, 7) < st.mix, an = st.axnoise * inst, sn = st.scnoise * inst;
+    if (rob) {
+      s.style.fontFamily = "'Roboto Flex'";
+      s.style.fontVariationSettings =
+        `'wght' ${clampAx("f_wght", st.f_wght + dW + an * 350 * (rnd(i, j) - 0.5))}, 'wdth' ${clampAx("f_wdth", st.f_wdth + an * 60 * (rnd(j, i) - 0.5))}, ` +
+        `'opsz' ${st.f_opsz}, 'GRAD' ${st.f_GRAD}, 'slnt' ${st.f_slnt}, 'XOPQ' ${st.f_XOPQ}, 'YOPQ' ${st.f_YOPQ}, 'XTRA' ${st.f_XTRA}, ` +
+        `'YTLC' ${st.f_YTLC}, 'YTUC' ${st.f_YTUC}, 'YTAS' ${st.f_YTAS}, 'YTDE' ${st.f_YTDE}`;
+    } else {
+      s.style.fontFamily = "'Recursive'";
+      s.style.fontVariationSettings =
+        `'wght' ${clampAx("r_wght", st.r_wght + dW + an * 300 * (rnd(i, j) - 0.5))}, 'CASL' ${clampAx("r_CASL", st.r_CASL + an * 0.6 * (rnd(j, i) - 0.5))}, ` +
+        `'slnt' ${st.r_slnt}, 'CRSV' ${st.r_CRSV}, 'MONO' ${st.r_MONO}`;
+    }
+    const n = i * 13 + j;
+    const jx = st.jitter * inst * nz(n, now, 1.9), jy = st.jitter * inst * nz(n + 77, now, 2.3);
+    const wy = st.wave * Math.sin(now * 1.6 + (i * 5 + j) * 0.35) + st.baseline * (rnd(n, 3) - 0.5) * 2;
+    const r = st.rot * inst * nz(n + 191, now, 0.7), sc = 1 + sn * (rnd(n, 11) - 0.5);
+    s.style.transform = `translate(${jx.toFixed(3)}em, ${(jy + wy).toFixed(3)}em) rotate(${r.toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+  });
+}
+
+// ------------------------------------------------------------------ boucle
+function loop(now) {
+  const dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
+  const N = TXT.words.length, progress = idx / N, a = alphaAt(Math.min(1, progress));
+  updateFilters(a, dt);
+  const st = stateNow();
+  if (playing) {
+    clock += dt;
+    while (playing && clock >= nextAt) {
+      if (idx >= N) { pause(); break; }
+      addWord(idx, st); idx++;
+      const gap = 1 / Math.max(0.1, +$("rate").value * st.rate);
+      const hes = st.hesit > 0 && rnd(idx, 99) < st.hesit * 0.35 ? gap * (2 + 6 * rnd(idx, 5) * st.hesit) : 0;
+      nextAt = clock + gap + hes;
+    }
+  }
+  const text = $("text"), live = $("freeze").value === "live";
+  text.style.fontSize = (live ? st.size : 2.4) + "vw";
+  text.style.lineHeight = (live ? st.lead : 1.32);
+  for (const el of text.querySelectorAll(".w")) {
+    if (!live && el._done) continue;  // mot figé et sans mouvement : déjà stylé
+    const s = live ? st : el._st;
+    el.style.fontSize = live ? "1em" : (s.size / 2.4) + "em";
+    // figé : l'amplitude du bruit est celle de la naissance du mot, mais il reste animé
+    styleWord(el, s, clock);
+    if (!live && clock - el._born > s.fadein && s.jitter < 1e-3 && s.rot < 1e-3 && s.wave < 1e-3 && Math.abs(s.fall) < 1e-3 &&
+        s.huespin < 1e-3 && s.pulse < 1e-3 && s.scatter < 1e-3) el._done = true;
+  }
+  if (live) text.querySelectorAll(".w").forEach(el => el._done = false);
+  if (!live) text.style.lineHeight = st.lead;
+  $("page").style.background = `hsl(${st.bg_hue} ${st.bg_sat}% ${st.bg_light}%)`;  // le fond suit toujours l'état courant
+  drawCurve(Math.min(1, progress), a);
+  $("status").textContent = `mot ${idx}/${N} · α ${a.toFixed(2)} · ${a > 0.05 ? "montée/pic" : a < -0.05 ? "contrecoup (α négatif)" : "neutre"}`;
+  requestAnimationFrame(loop);
+}
+function play() { if (idx >= TXT.words.length) restart(); playing = true; $("play").textContent = "❚❚ pause"; }
+function pause() { playing = false; $("play").textContent = "▶︎ écrire"; }
+function restart() { walkX = 0; walkY = 0; idx = 0; clock = 0; nextAt = 0; filt = {}; $("text").innerHTML = ""; $("page").scrollTop = 0; }
+
+// ------------------------------------------------------------------ panneau de paramètres
+function buildParams() {
+  const d = $("drug").value, P = preset(d), box = $("params"); box.innerHTML = "";
+  let group = null, tbody;
+  for (const [k, label, min, max, , grp] of SPACE) {
+    if (grp !== group) {
+      group = grp; const h = document.createElement("h2"); h.textContent = grp; box.appendChild(h);
+      const t = document.createElement("table");
+      t.innerHTML = `<thead><tr><th></th><th>neutre</th><th>α = +1</th><th>α = −1</th><th class="advc">réponse</th><th class="advc">seuil</th><th class="advc">retard ↑</th><th class="advc">retard ↓</th><th>actuel</th></tr></thead><tbody></tbody>`;
+      box.appendChild(t); tbody = t.querySelector("tbody");
+    }
+    const r = P[k], step = (max - min) > 50 ? 1 : (max - min) > 5 ? 0.1 : 0.01;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td title="${k} · ${min} → ${max}">${label}</td>` +
+      ["neu", "pos", "neg"].map(f => `<td><input type="number" data-k="${k}" data-f="${f}" min="${min}" max="${max}" step="${step}" value="${+r[f].toFixed(3)}"></td>`).join("") +
+      `<td class="advc"><select class="resp" data-k="${k}" data-f="resp"><option value="lin">linéaire</option><option value="seuil">seuil</option><option value="sat">saturation</option></select></td>` +
+      `<td class="advc"><input type="number" data-k="${k}" data-f="thr" min="0" max="0.95" step="0.05" value="${r.thr}"></td>` +
+      `<td class="advc"><input type="number" data-k="${k}" data-f="up" min="0" max="20" step="0.1" value="${r.up}"></td>` +
+      `<td class="advc"><input type="number" data-k="${k}" data-f="down" min="0" max="20" step="0.1" value="${r.down}"></td>` +
+      `<td class="val" id="v_${k}"></td>`;
+    tr.querySelector("select").value = r.resp;
+    tr.querySelectorAll("input, select").forEach(inp => inp.addEventListener("input", () => {
+      P[inp.dataset.k][inp.dataset.f] = inp.tagName === "SELECT" ? inp.value : +inp.value; save();
+    }));
+    tbody.appendChild(tr);
+  }
+}
+setInterval(() => {  // valeurs courantes affichées dans le panneau
+  if (!TXT) return; const st = stateNow();
+  for (const [k] of SPACE) { const c = $("v_" + k); if (c) c.textContent = Math.abs(st[k]) >= 100 ? st[k].toFixed(0) : st[k].toFixed(2); }
+}, 150);
+
+function loadText(id) {
+  TXT = TEXTS.find(t => t.id === id);
+  const e = TXT.words.map(w => w.ent), sorted = [...e].sort((a, b) => a - b);
+  entNorm = e.map(v => sorted.findIndex(x => x >= v) / Math.max(1, sorted.length - 1));  // rang centile
+  $("question").textContent = `« ${TXT.question} » · environnement : ${TXT.environment} · ${TXT.words.length} mots`;
+  pause(); restart();
+}
+
+async function init() {
+  TEXTS = await (await fetch("data/texts.json")).json();
+  $("textsel").innerHTML = TEXTS.map(t => `<option value="${t.id}">${t.id.replace("_", " · ")}</option>`).join("");
+  $("drug").innerHTML = Object.entries(LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  $("textsel").onchange = () => loadText($("textsel").value);
+  $("drug").onchange = () => { buildParams(); };
+  $("play").onclick = () => playing ? pause() : play();
+  $("restart").onclick = () => { restart(); };
+  $("advtoggle").onclick = () => { document.body.classList.toggle("adv"); $("advtoggle").classList.toggle("on"); };
+  $("reset").onclick = () => { presets[$("drug").value] = defaultFor($("drug").value); save(); buildParams(); };
+  $("export").onclick = async () => {
+    const all = {curve: curveParams(), network: {inst: +$("k_inst").value, wght: +$("k_wght").value, op: +$("k_op").value, hue: +$("k_hue").value},
+                 drugs: Object.fromEntries(Object.keys(D).map(d => [d, preset(d)]))};
+    try { await navigator.clipboard.writeText(JSON.stringify(all, null, 1)); $("msg").textContent = "Réglages copiés dans le presse-papiers."; }
+    catch { console.log(JSON.stringify(all)); $("msg").textContent = "Copie impossible : JSON dans la console."; }
+  };
+  for (const k of ["k_inst", "k_wght", "k_op", "k_hue"]) $(k).oninput = () => $(k + "_o").textContent = (+$(k).value).toFixed(k === "k_hue" ? 0 : 2);
+  document.addEventListener("keydown", (e) => { if (e.code === "Space" && !["INPUT", "SELECT"].includes(e.target.tagName)) { e.preventDefault(); playing ? pause() : play(); } });
+  loadText(TEXTS[0].id); buildParams();
+  requestAnimationFrame((n) => { lastNow = n; requestAnimationFrame(loop); });
+}
+init();
+</script>
+</body>
+</html>

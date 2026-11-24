@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>hack1robo · directions artistiques</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Recursive:slnt,wght,CASL,CRSV,MONO@-15..0,300..1000,0..1,0..1,0..1&family=Roboto+Flex:opsz,slnt,wdth,wght,GRAD,XOPQ,XTRA,YOPQ,YTAS,YTDE,YTFI,YTLC,YTUC@8..144,-10..0,25..151,100..1000,-200..150,27..175,323..603,25..135,649..854,-305..-98,560..788,416..570,528..760&display=block" rel="stylesheet">
+<style>
+  /* Maquettes figées, LSD au pic (~30 % du texte). ?d=buvard | partition | rorschach */
+  * { box-sizing:border-box; margin:0; }
+  html, body { width:1920px; height:1080px; overflow:hidden; }
+  body { position:relative; font-family:"Roboto Flex", sans-serif; }
+  .abs { position:absolute; }
+  canvas.full { position:absolute; inset:0; width:1920px; height:1080px; }
+  .out { font-family:"Recursive"; font-size:22px; line-height:1.5; }
+  .out .w { display:inline-block; margin-right:.3em; white-space:nowrap; }
+  .out .w span { display:inline-block; }
+
+  /* ===== D · buvard ===== */
+  body.buvard { background:#E8E7E2; color:#15131C; }
+  .buvard .label { position:absolute; background:#F5F4F0; box-shadow:0 1px 0 rgba(0,0,0,.06); }
+  .buvard .tab { position:absolute; width:120px; height:120px; display:flex; align-items:center; justify-content:center;
+                 font-family:"Recursive"; font-variation-settings:'MONO' 1, 'wght' 800, 'CASL' .3; font-size:20px; letter-spacing:.02em; }
+  .buvard .tab.on { color:#F5F4F0; }
+  .buvard .stamp { position:absolute; font-family:"Recursive"; font-variation-settings:'wght' 900, 'CASL' 1; color:#FF2E7E;
+                   mix-blend-mode:multiply; opacity:.82; }
+  .buvard .typed { font-family:"Recursive"; font-variation-settings:'MONO' 1, 'wght' 420; font-size:15px; line-height:1.5; }
+
+  /* ===== E · partition ===== */
+  body.partition { background:#F7F7F4; color:#141414; }
+  .partition .title { font-variation-settings:'opsz' 144, 'wght' 260, 'wdth' 100; font-size:58px; line-height:1.05; letter-spacing:-.01em; }
+  .partition .sub { font-variation-settings:'opsz' 18, 'wght' 330, 'slnt' -8; font-size:18px; color:#555; }
+  .partition .tempo { font-variation-settings:'opsz' 36, 'wght' 760, 'slnt' -10; font-size:24px; }
+  .partition .tempo.off { font-variation-settings:'opsz' 36, 'wght' 380, 'slnt' -10; color:#9a9a96; }
+  .partition .note { font-variation-settings:'opsz' 14, 'wght' 400, 'slnt' -9; font-size:16px; color:#444; }
+  .partition .vignette { border-radius:50%; overflow:hidden; filter:grayscale(1) contrast(1.35); }
+  .partition .vignette::after { content:""; position:absolute; inset:0; background:repeating-linear-gradient(-30deg, rgba(247,247,244,.55) 0 1px, transparent 1px 4px); }
+
+  /* ===== F · rorschach ===== */
+  body.rorschach { background:#F6F5F1; color:#101010; }
+  .rorschach .hand { font-family:"Recursive"; font-variation-settings:'CASL' 1, 'slnt' -11, 'wght' 380, 'CRSV' 1; color:#2A3550; }
+  .rorschach .card { font-variation-settings:'opsz' 24, 'wght' 300, 'wdth' 110; letter-spacing:.06em; font-size:17px; color:#666; }
+  .rorschach .q { font-variation-settings:'opsz' 40, 'wght' 360, 'wdth' 96; font-size:32px; }
+</style>
+</head>
+<body>
+<script src="data.js"></script>
+<script src="data2.js"></script>
+<script src="../typo.js"></script>
+<script>
+const D = MOCK, D2 = MOCK2, P_NOW = 0.31, LSD1 = "#5A2BE8", LSD2 = "#FF2E7E";
+const which = new URLSearchParams(location.search).get("d") || "buvard";
+document.body.classList.add(which);
+const el = (tag, cls, css, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (css) Object.assign(e.style, css);
+  if (text != null) e.textContent = text; document.body.appendChild(e); return e; };
+const rnd = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
+const C = {t1: .25, t2: .40, t3: .72, peak: 1, neg: -.6, end: -.1};
+function alphaAt(p) {
+  const e = (a, b, x) => a + (b - a) * (.5 - .5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x))));
+  if (p <= C.t1) return e(0, C.peak, p / C.t1); if (p <= C.t2) return C.peak;
+  if (p <= C.t3) return e(C.peak, C.neg, (p - C.t2) / (C.t3 - C.t2)); return e(C.neg, C.end, (p - C.t3) / (1 - C.t3));
+}
+function canvas(z = 0) { const c = el("canvas", "full", {zIndex: z}); c.width = 3840; c.height = 2160; const g = c.getContext("2d"); g.scale(2, 2); return g; }
+function loadImg(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; }); }
+function pixels(img, w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d");
+  const s = Math.max(w / img.width, h / img.height), dw = img.width * s, dh = img.height * s; g.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  return g.getImageData(0, 0, w, h).data; }
+
+// texte de sortie avec le moteur de typolab (mots figés le long de la courbe), couleurs adaptées au papier
+function writeOutput(box, basePx, inkOnPaper) {
+  TYPO.setDrug("lsd"); TYPO.reset();
+  const out = document.createElement("div"); out.className = "out"; out.style.fontSize = basePx + "px"; box.appendChild(out);
+  const N = D.words.length; let t = 0; const els = [];
+  D.words.forEach((w, i) => {
+    const a = alphaAt((i + 1) / N * P_NOW); for (let k = 0; k < 6; k++) TYPO.update(a, .055); t += .33;
+    for (let n = 0; n < w.nl; n++) out.appendChild(document.createElement("br"));
+    const e = document.createElement("span"); e.className = "w"; [...w.w].forEach(ch => { const c = document.createElement("span"); c.textContent = ch; e.appendChild(c); });
+    out.appendChild(e); TYPO.birth(e, i, TYPO.state(), t); e._ent = w.ent; els.push(e);
+  });
+  els.forEach(e => TYPO.style(e, t, {ent: e._ent, box, basePx}));
+  if (inkOnPaper) out.querySelectorAll(".w span").forEach(s => { const m = s.style.color.match(/rgb\((\d+), (\d+), (\d+)\)/); if (!m) return;
+    let [r, g, b] = [+m[1], +m[2], +m[3]].map(x => x / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    const sat = d ? (l > .5 ? d / (2 - mx - mn) : d / (mx + mn)) : 0; let h = !d ? 0 : mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    s.style.color = `hsl(${(h * 60).toFixed(0)} ${Math.min(100, sat * 100 + 15).toFixed(0)}% ${Math.max(20, 100 - l * 100 * .85).toFixed(0)}%)`; });
+  return out;
+}
+
+// =====================================================================================================  D · BUVARD
+async function buvard() {
+  const img = await loadImg(D2.frames[0]), W = 1920, H = 1080, step = 7;
+  const px = pixels(img, W / step | 0, H / step | 0), cw = W / step | 0;
+  const g = canvas(0);
+  // risographie deux couleurs : trame de points violette (ombres) et rose fluo (rouges et saturés), légèrement décalées
+  g.globalCompositeOperation = "multiply";
+  for (const [ink, dx, dy, fn] of [[LSD1, 0, 0, (r, gg, b) => 1 - (0.3 * r + 0.59 * gg + 0.11 * b) / 255],
+                                   [LSD2, 3, 2, (r, gg, b) => Math.max(0, (r - (gg + b) / 2) / 255) * 1.6 + (1 - (0.3 * r + 0.59 * gg + 0.11 * b) / 255) * .35]]) {
+    g.fillStyle = ink;
+    for (let y = 0; y < H / step - 1; y++) for (let x = 0; x < cw; x++) {
+      const i = (y * cw + x) * 4, v = Math.max(0, Math.min(1, fn(px[i], px[i + 1], px[i + 2])));
+      if (v < .06) continue; g.beginPath(); g.arc(x * step + step / 2 + dx, y * step + step / 2 + dy, Math.sqrt(v) * step * .62, 0, 7); g.fill();
+    }
+  }
+  g.globalCompositeOperation = "source-over";
+  // perforations : la planche est prédécoupée en carrés de 120 px ; quelques carrés ont déjà été détachés
+  const torn = [[3, 2], [9, 1], [12, 5], [6, 7], [14, 3], [1, 6], [10, 8]];
+  for (const [cx, cy] of torn) { g.fillStyle = "#E8E7E2"; g.fillRect(cx * 120 + 1, cy * 120 + 1, 118, 118);
+    g.strokeStyle = "rgba(0,0,0,.08)"; g.strokeRect(cx * 120 + 3, cy * 120 + 3, 114, 114); }
+  g.fillStyle = "#E8E7E2";
+  for (let x = 0; x <= W; x += 120) for (let y = 0; y < H; y += 6) { g.beginPath(); g.arc(x, y, 1.3, 0, 7); g.fill(); }
+  for (let y = 0; y <= H; y += 120) for (let x = 0; x < W; x += 6) { g.beginPath(); g.arc(x, y, 1.3, 0, 7); g.fill(); }
+
+  // les trois doses à détacher
+  [["LSD", true], ["MDMA", false], ["NEUTRAL", false]].forEach(([t, on], k) => {
+    const tab = el("div", "tab" + (on ? " on" : ""), {left: 120 + k * 120 + "px", top: "120px", background: on ? LSD1 : "#F5F4F0", fontSize: t.length > 4 ? "15px" : "21px"}, t);
+  });
+  // le prompt, comme l'étiquette imprimée d'une planche
+  const lab = el("div", "label", {left: "120px", top: "360px", width: "480px", height: "240px", padding: "26px 28px"});
+  lab.innerHTML = `<div style="font-variation-settings:'wdth' 30,'wght' 900,'opsz' 144; font-size:46px; line-height:.98; letter-spacing:-.01em">${D.question}</div>
+    <div class="typed" style="margin-top:18px; color:#555">${D.context}</div>`;
+  // le texte du réseau, imprimé sur une grande étiquette
+  const box = el("div", "label", {left: "1320px", top: "120px", width: "480px", height: "720px", padding: "24px 26px", overflow: "hidden"});
+  writeOutput(box, 21, true);
+  // le réseau : 48 couches perforées, les couches droguées imprimées
+  const net = el("div", "label", {left: "600px", top: "840px", width: "720px", height: "120px"});
+  const ng = document.createElement("canvas"); ng.width = 1440; ng.height = 240; ng.style.width = "720px"; ng.style.height = "120px"; net.appendChild(ng);
+  const n2 = ng.getContext("2d"); n2.scale(2, 2);
+  for (let l = 0; l < 48; l++) for (let k = 0; k < 6; k++) { const x = 24 + l * 14.3, y = 22 + k * 15.5, dr = l >= 22 && l <= 33, band = l >= 19 && l <= 44;
+    n2.beginPath(); n2.arc(x, y, dr ? 4.2 : 2.6, 0, 7); if (dr) { n2.fillStyle = rnd(l, k) > .3 ? LSD1 : LSD2; n2.fill(); } else { n2.strokeStyle = band ? "#15131C" : "#aaa"; n2.lineWidth = 1; n2.stroke(); } }
+  // la dose : trait d'encre épais, double passage riso
+  const dg = canvas(5);
+  for (const [ink, ox, oy, w] of [[LSD2, 4, 3, 16], [LSD1, 0, 0, 10]]) {
+    dg.strokeStyle = ink; dg.lineWidth = w; dg.lineCap = "round"; dg.globalAlpha = .9; dg.beginPath();
+    for (let i = 0; i <= 200; i++) { const q = i / 200 * P_NOW, x = 130 + q / P_NOW * 1060, y = 1020 - alphaAt(q) * 80; i ? dg.lineTo(x + ox, y + oy) : dg.moveTo(x + ox, y + oy); }
+    dg.stroke(); }
+  dg.globalAlpha = .35; dg.setLineDash([3, 9]); dg.strokeStyle = LSD1; dg.lineWidth = 3; dg.beginPath();
+  for (let i = 0; i <= 200; i++) { const q = P_NOW + i / 200 * (1 - P_NOW), x = 130 + q / P_NOW * 1060 * P_NOW * 3.1, y = 1020 - alphaAt(q) * 80; i ? dg.lineTo(Math.min(1290, 1190 + (q - P_NOW) / (1 - P_NOW) * 100), y) : dg.moveTo(1190, y); }
+  // phase et mots-clés : tampons
+  el("div", "stamp", {left: "770px", top: "150px", fontSize: "120px", transform: "rotate(-9deg)", letterSpacing: "-.02em"}, "pic");
+  const ab = el("div", "label typed", {left: "840px", top: "300px", width: "360px", padding: "14px 16px", transform: "rotate(1.5deg)"}, D.about);
+  D.keywords.slice(0, 11).forEach((w, i) => el("div", "stamp", {left: 640 + (i % 4) * 160 + rnd(i, 1) * 50 + "px", top: 470 + Math.floor(i / 4) * 95 + rnd(i, 2) * 30 + "px",
+    fontSize: 26 + rnd(i, 3) * 22 + "px", transform: `rotate(${(rnd(i, 4) - .5) * 30}deg)`, opacity: .55 + rnd(i, 5) * .35, color: i % 3 ? LSD2 : LSD1}, w));
+  // le son : barres tramées
+  const sp = el("div", "label", {left: "1320px", top: "840px", width: "480px", height: "120px"});
+  const sc = document.createElement("canvas"); sc.width = 960; sc.height = 240; sc.style.width = "480px"; sc.style.height = "120px"; sp.appendChild(sc);
+  const s2 = sc.getContext("2d"); s2.scale(2, 2);
+  for (let b = 0; b < 60; b++) { const f = b / 60, v = (Math.exp(-((f - .22) ** 2) / .02) * .9 + Math.exp(-((f - .5) ** 2) / .01) * .35) * (.7 + .3 * rnd(b, 7));
+    for (let y = 0; y < v * 46; y += 5) { s2.fillStyle = y > v * 30 ? LSD2 : LSD1; s2.beginPath(); s2.arc(14 + b * 7.6, 60 - y, 2, 0, 7); s2.arc(14 + b * 7.6, 60 + y, 2, 0, 7); s2.fill(); } }
+}
+
+// =====================================================================================================  E · PARTITION
+async function partition() {
+  const g = canvas(0), X0 = 150, X1 = 1790, Y0 = 330, gap = 11.5, L = D2.layers.length, notes = D2.notes;
+  // titre (le prompt), indications de tempo (les trois doses), consigne d'interprétation (la phase)
+  el("div", "abs title", {left: X0 + "px", top: "64px", width: "1000px"}, D.question);
+  el("div", "abs sub", {left: X0 + 2 + "px", top: "200px"}, D.context);
+  el("div", "abs sub", {right: "130px", top: "84px", textAlign: "right", fontStyle: "normal"}, "pour un réseau de 48 couches");
+  el("div", "abs sub", {right: "130px", top: "110px", textAlign: "right"}, "et une dose");
+  [["LSD", 0], ["MDMA", 1], ["neutral", 2]].forEach(([t, k]) => el("div", "abs tempo" + (k ? " off" : ""), {left: X0 + k * 120 + "px", top: "262px"}, t));
+  el("div", "abs note", {left: "520px", top: "268px", width: "720px"}, "Pic. " + D.about);
+  // la vignette : l'image latente gravée
+  const v = el("div", "abs vignette", {right: "130px", top: "140px", width: "300px", height: "170px"});
+  const im = document.createElement("img"); im.src = D2.frames[0]; Object.assign(im.style, {width: "100%", height: "100%", objectFit: "cover"}); v.appendChild(im);
+  // la portée : une ligne par couche lue (19-44), regroupées par cinq comme des portées
+  const ly = (k) => Y0 + k * gap + Math.floor(k / 5) * 14;
+  g.strokeStyle = "#141414"; g.lineWidth = .7;
+  for (let k = 0; k < L; k++) { g.beginPath(); g.moveTo(X0, ly(k)); g.lineTo(X1, ly(k)); g.stroke(); }
+  g.lineWidth = 2.2; g.beginPath(); g.moveTo(X0 - 14, ly(0) - 4); g.lineTo(X0 - 14, ly(L - 1) + 4); g.stroke();  // accolade du système
+  g.lineWidth = 1; g.beginPath(); g.moveTo(X0, ly(0)); g.lineTo(X0, ly(L - 1)); g.stroke();
+  g.font = "300 11px 'Roboto Flex'"; g.fillStyle = "#888";
+  for (let k = 0; k < L; k += 5) g.fillText(D2.layers[k], X0 - 44, ly(k) + 4);
+  // les notes : un token = un temps ; pour chaque couche, une tête de note quand le mot lu change, une liaison quand il est tenu
+  const tx = (i) => X0 + 40 + i / (notes.length - 1) * (X1 - X0 - 60);
+  for (let i = 0; i < notes.length; i++) {
+    if (i % 8 === 0) { g.strokeStyle = "#141414"; g.lineWidth = .8; g.beginPath(); g.moveTo(tx(i) - 14, ly(0)); g.lineTo(tx(i) - 14, ly(L - 1)); g.stroke(); }  // mesures
+    for (let k = 0; k < L; k++) {
+      const w = notes[i].w[k], prev = i ? notes[i - 1].w[k] : null, layer = D2.layers[k], drug = layer >= 22 && layer <= 33;
+      if (!w) continue;
+      const y = ly(k) + (rnd(i, k) > .5 ? gap / 2 : 0), x = tx(i);
+      g.fillStyle = g.strokeStyle = drug ? (rnd(i, k) > .4 ? LSD1 : LSD2) : "#141414";
+      if (w === prev) { g.lineWidth = 1; g.beginPath(); g.moveTo(tx(i - 1) + 6, y - 5); g.quadraticCurveTo((tx(i - 1) + x) / 2, y - 12, x - 6, y - 5); g.stroke(); continue; }
+      g.save(); g.translate(x, y); g.rotate(-.35); g.beginPath(); g.ellipse(0, 0, 6.2, 4.3, 0, 0, 7);
+      if (notes[i].e < 0.6) g.fill(); else { g.lineWidth = 1.4; g.stroke(); }  // incertitude haute : note blanche
+      g.restore();
+      if (k % 6 === 0 && rnd(i, k + 3) > .55) { g.lineWidth = 1; g.beginPath(); g.moveTo(x + 6, y); g.lineTo(x + 6, y - 34); g.stroke(); }
+    }
+  }
+  // paroles : le mot lu à la couche 30 sous chaque changement
+  g.font = "italic 340 13px 'Roboto Flex'"; g.fillStyle = "#333";
+  const k30 = D2.layers.indexOf(30);
+  for (let i = 0; i < notes.length; i++) { const w = notes[i].w[k30]; if (w && (!i || notes[i - 1].w[k30] !== w) && rnd(i, 1) > .35) g.fillText(w, tx(i) - 10, ly(L - 1) + 30); }
+  // nuances : la dose en soufflets (crescendo jusqu'au pic), puis la suite en pointillés
+  const dyn = ly(L - 1) + 70;
+  g.strokeStyle = "#141414"; g.lineWidth = 1.3;
+  g.beginPath(); g.moveTo(X0 + 60, dyn); g.lineTo(X0 + 640, dyn - 16); g.moveTo(X0 + 60, dyn); g.lineTo(X0 + 640, dyn + 16); g.stroke();
+  g.setLineDash([4, 6]); g.strokeStyle = "#aaa"; g.beginPath(); g.moveTo(X0 + 900, dyn - 16); g.lineTo(X0 + 1400, dyn); g.lineTo(X0 + 900, dyn + 16); g.stroke(); g.setLineDash([]);
+  for (const [t, x] of [["pp", X0 + 18], ["fff", X0 + 660], ["p", X0 + 1420]]) { g.font = "italic 800 28px 'Roboto Flex'"; g.fillStyle = x > X0 + 900 ? "#aaa" : "#141414"; g.fillText(t, x, dyn + 9); }
+  // repères de répétition : les phases du catalogue
+  for (const [t, x] of [["Montée", X0 + 40], ["Pic", X0 + 330]]) { g.font = "600 14px 'Roboto Flex'"; const w = g.measureText(t).width + 14;
+    g.strokeStyle = "#141414"; g.lineWidth = 1.2; g.strokeRect(x, Y0 - 44, w, 24); g.fillStyle = "#141414"; g.fillText(t, x + 7, Y0 - 27); }
+  // mots-clés : indications d'expression au-dessus de la portée
+  D.keywords.slice(0, 7).forEach((w, i) => el("div", "abs note", {left: 640 + i * 150 + "px", top: Y0 - 40 + "px", color: i % 2 ? LSD2 : LSD1}, w));
+  // le texte du réseau, en paroles, sous la partition
+  const box = el("div", "abs", {left: X0 + "px", top: dyn + 40 + "px", width: X1 - X0 + "px", height: 1080 - dyn - 90 + "px", overflow: "hidden", columnCount: 3, columnGap: "60px"});
+  writeOutput(box, 19, true);
+  // le son : basse continue, tracée comme un sismogramme au pied de la page
+  g.strokeStyle = "#141414"; g.lineWidth = .9; g.beginPath();
+  for (let x = X0; x <= X1; x += 2) { const t = (x - X0) / (X1 - X0), env = Math.exp(-((t - .3) ** 2) / .03) * .8 + .15, y = 1048 + Math.sin(x * .9) * Math.sin(x * .13) * 14 * env * (rnd(x, 1) * .6 + .4); x === X0 ? g.moveTo(x, y) : g.lineTo(x, y); }
+  g.stroke();
+}
+
+// =====================================================================================================  F · RORSCHACH
+async function rorschach() {
+  const img = await loadImg(D2.frames[0]), W = 1920, H = 1080, BW = 820, BH = 700, CX = W / 2, TOP = 150;
+  const w2 = BW / 2 / 3 | 0, h2 = BH / 3 | 0, px = pixels(img, w2 * 2, h2);
+  const g = canvas(0);
+  // la tache : la moitié gauche de l'image latente, seuillée en encre, puis repliée (miroir) autour de l'axe central
+  const blot = document.createElement("canvas"); blot.width = w2; blot.height = h2; const b = blot.getContext("2d"); const id = b.createImageData(w2, h2);
+  const tint = document.createElement("canvas"); tint.width = w2; tint.height = h2; const tb = tint.getContext("2d"); const td = tb.createImageData(w2, h2);
+  for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
+    const i = (y * w2 * 2 + x) * 4, r = px[i], gg = px[i + 1], bl = px[i + 2], lum = (0.3 * r + 0.59 * gg + 0.11 * bl) / 255;
+    const edge = Math.min(1, x / (w2 * .9)) * Math.min(1, Math.min(y, h2 - y) / (h2 * .18));   // la tache s'éteint vers l'extérieur
+    const ink = Math.max(0, Math.min(1, (0.66 - lum) * 3.4)) * edge, o = (y * w2 + x) * 4;
+    id.data[o] = id.data[o + 1] = id.data[o + 2] = 14; id.data[o + 3] = ink * 255;
+    const col = Math.max(0, Math.min(1, ((r - (gg + bl) / 2) / 255 * 3 + (lum < .7 && lum > .35 ? .5 : 0) - .45))) * edge;
+    const c = rnd(x >> 3, y >> 3) > .5 ? [90, 43, 232] : [255, 46, 126];
+    td.data[o] = c[0]; td.data[o + 1] = c[1]; td.data[o + 2] = c[2]; td.data[o + 3] = col * 255;
+  }
+  b.putImageData(id, 0, 0); tb.putImageData(td, 0, 0);
+  // composition sur une toile à part : floutée puis seuillée, pour des bords d'encre nets et organiques
+  const inkLayer = (src, rgb, lo, hi) => {
+    const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
+    x.filter = "blur(7px)";
+    x.drawImage(src, CX - BW / 2, TOP, BW / 2, BH);
+    x.save(); x.translate(CX + BW / 2, TOP); x.scale(-1, 1); x.drawImage(src, 0, 0, BW / 2, BH); x.restore();
+    x.filter = "none";
+    const d = x.getImageData(CX - BW / 2 - 20, TOP - 20, BW + 40, BH + 40), p = d.data;
+    for (let i = 0; i < p.length; i += 4) {
+      const z = Math.max(0, Math.min(1, (p[i + 3] / 255 - lo) / (hi - lo))), v = z * z * (3 - 2 * z);
+      p[i] = rgb[0]; p[i + 1] = rgb[1]; p[i + 2] = rgb[2]; p[i + 3] = v * 255;
+    }
+    x.putImageData(d, CX - BW / 2 - 20, TOP - 20); return c;
+  };
+  g.globalCompositeOperation = "multiply";
+  g.drawImage(inkLayer(tint, [255, 46, 126], .10, .19), 0, 0, W, H);
+  g.drawImage(inkLayer(tint, [90, 43, 232], .20, .28), 0, 0, W, H);
+  g.drawImage(inkLayer(blot, [14, 14, 18], .16, .26), 0, 0, W, H);
+  g.globalCompositeOperation = "source-over";
+  // le pli : le son, tracé le long de l'axe central (bandes graves en bas, aiguës en haut)
+  g.strokeStyle = "rgba(16,16,16,.75)"; g.lineWidth = 1;
+  for (let k = 0; k < 90; k++) { const f = k / 90, v = (Math.exp(-((f - .25) ** 2) / .02) * .9 + Math.exp(-((f - .5) ** 2) / .01) * .35) * (.6 + .4 * rnd(k, 5)), y = TOP + BH - 20 - k * (BH - 40) / 90;
+    g.beginPath(); g.moveTo(CX - v * 40, y); g.lineTo(CX + v * 40, y); g.stroke(); }
+  // le réseau : 48 couches en paires symétriques sous la tache, les couches droguées en couleur
+  for (let l = 0; l < 48; l++) for (let k = 0; k < 4; k++) for (const s of [-1, 1]) {
+    const x = CX + s * (30 + l * 9.4), y = TOP + BH + 34 + k * 11, dr = l >= 22 && l <= 33;
+    g.fillStyle = dr ? (k % 2 ? LSD2 : LSD1) : (l >= 19 && l <= 44 ? "#222" : "#b9b7b0"); g.beginPath(); g.arc(x, y, dr ? 3 : 1.8, 0, 7); g.fill(); }
+  // la dose, en symétrie au pied de la planche
+  for (const s of [-1, 1]) { g.strokeStyle = LSD1; g.lineWidth = 2; g.beginPath();
+    for (let i = 0; i <= 120; i++) { const q = i / 120 * P_NOW, x = CX + s * (q / P_NOW * 380), y = 1040 - alphaAt(q) * 30; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
+    g.strokeStyle = "#cfcdc6"; g.lineWidth = 1; g.beginPath();
+    for (let i = 0; i <= 120; i++) { const q = P_NOW + i / 120 * (1 - P_NOW), x = CX + s * (380 + (q - P_NOW) / (1 - P_NOW) * 200), y = 1040 - alphaAt(q) * 30; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
+  // en-tête de la planche
+  el("div", "abs card", {left: 0, right: 0, top: "40px", textAlign: "center"}, "Planche I");
+  el("div", "abs q", {left: 0, right: 0, top: "72px", textAlign: "center"}, D.question);
+  // les réponses du patient : les mots-clés, notés à la main autour de la tache
+  const spots = [[480, 260], [430, 420], [470, 600], [520, 760], [1330, 300], [1390, 470], [1350, 640], [1300, 800], [600, 180], [1210, 190], [560, 880]];
+  D.keywords.slice(0, spots.length).forEach((w, i) => el("div", "abs hand", {left: spots[i][0] - (spots[i][0] < 960 ? 140 : 0) + "px", top: spots[i][1] + "px",
+    fontSize: 22 + rnd(i, 9) * 10 + "px", transform: `rotate(${(rnd(i, 8) - .5) * 10}deg)`, opacity: .55 + rnd(i, 7) * .45}, w));
+  el("div", "abs hand", {left: "70px", top: "930px", width: "360px", fontSize: "18px", lineHeight: "1.4"}, "Pic. " + D.about);
+  // le texte du réseau à droite, et son reflet replié à gauche
+  const right = el("div", "abs", {left: "1490px", top: "190px", width: "380px", height: "700px", overflow: "hidden"});
+  writeOutput(right, 19, true);
+  const left = el("div", "abs", {left: "50px", top: "190px", width: "380px", height: "700px", overflow: "hidden", transform: "scaleX(-1)", opacity: .22, filter: "blur(.4px)"});
+  left.appendChild(right.firstChild.cloneNode(true));
+  // les trois doses : des gouttes d'encre
+  [["LSD", true], ["MDMA", false], ["neutral", false]].forEach(([t, on], k) => {
+    const x = 1560 + k * 110;
+    const d = el("div", "abs", {left: x + "px", top: "960px", width: "34px", height: "30px", borderRadius: "52% 48% 55% 45% / 60% 50% 50% 40%", background: on ? LSD1 : "transparent", border: on ? "0" : "1.5px solid #101010"});
+    el("div", "abs card", {left: x - 20 + "px", top: "1000px", width: "74px", textAlign: "center", fontSize: "14px"}, t);
+  });
+}
+
+Promise.all([document.fonts.load("20px 'Roboto Flex'"), document.fonts.load("20px Recursive"), document.fonts.load("italic 20px 'Roboto Flex'")]).then(() => ({buvard, partition, rorschach})[which]()).then(() => document.body.dataset.ready = "1");
+</script>
+</body>
+</html>
